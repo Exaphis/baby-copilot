@@ -18,6 +18,10 @@
       {
         "command": "baby-copilot.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "baby-copilot.viewLogs",
+        "title": "View Data Collection Logs"
       }
     ]
   },

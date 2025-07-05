@@ -1,8 +1,14 @@
 import * as vscode from "vscode";
+import { activateDataCollection } from "./dataCollection";
+import * as fs from 'fs';
+import * as path from 'path';
+
+let extContext: vscode.ExtensionContext;
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+  extContext = context;
   console.log('Congratulations, your extension "baby-copilot" is now active!');
 
   // The command has been defined in the package.json file
@@ -17,7 +23,21 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  context.subscriptions.push(disposable);
+  const viewLogsCommand = vscode.commands.registerCommand(
+    "baby-copilot.viewLogs",
+    () => {
+      const storagePath = context.globalStorageUri.fsPath;
+      const logFilePath = path.join(storagePath, 'events.log');
+      if (fs.existsSync(logFilePath)) {
+        const logUri = vscode.Uri.file(logFilePath);
+        vscode.window.showTextDocument(logUri);
+      } else {
+        vscode.window.showInformationMessage("No logs found.");
+      }
+    }
+  );
+
+  context.subscriptions.push(disposable, viewLogsCommand);
 
   vscode.languages.registerInlineCompletionItemProvider(
     { pattern: "**" },
@@ -28,7 +48,13 @@ export function activate(context: vscode.ExtensionContext) {
       },
     }
   );
+
+  activateDataCollection(context);
 }
 
 // This method is called when your extension is deactivated
 export function deactivate() {}
+
+export function getExtensionContext() {
+    return extContext;
+}
