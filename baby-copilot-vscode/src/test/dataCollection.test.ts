@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { getExtensionContext } from "../extension";
+import { getExtensionContext } from "../extension.js";
 
 suite("Data Collection Test Suite", () => {
   vscode.window.showInformationMessage("Start all tests.");
@@ -31,9 +31,12 @@ suite("Data Collection Test Suite", () => {
     const logFilePath = getLogFilePath();
     assert.ok(fs.existsSync(logFilePath), "Log file should exist");
     const logContent = fs.readFileSync(logFilePath, "utf-8");
-    const logEntries = logContent.trim().split("\n").map(line => JSON.parse(line));
+    const logEntries = logContent
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
 
-    const snapshotEvent = logEntries.find(entry => entry.type === 'snapshot');
+    const snapshotEvent = logEntries.find((entry) => entry.type === "snapshot");
     assert.ok(snapshotEvent, "Snapshot event should be logged");
     assert.strictEqual(snapshotEvent.content, "Hello Snapshot");
   });
@@ -63,15 +66,25 @@ suite("Data Collection Test Suite", () => {
 
     const logFilePath = getLogFilePath();
     const logContent = fs.readFileSync(logFilePath, "utf-8");
-    const logEntries = logContent.trim().split("\n").map(line => JSON.parse(line));
+    const logEntries = logContent
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
 
-    const editEvents = logEntries.filter(entry => entry.type === 'edit');
-    assert.strictEqual(editEvents.length, 2, "Should log two edit events (initial content + test edit)");
+    const editEvents = logEntries.filter((entry) => entry.type === "edit");
+    assert.strictEqual(
+      editEvents.length,
+      2,
+      "Should log two edit events (initial content + test edit)"
+    );
     assert.deepStrictEqual(editEvents[1].changes[0].text, " more");
   });
 
   test("Should create a new snapshot on external file change", async () => {
-    const tempFilePath = path.join(getExtensionContext().globalStorageUri.fsPath, 'test.txt');
+    const tempFilePath = path.join(
+      getExtensionContext().globalStorageUri.fsPath,
+      "test.txt"
+    );
     fs.writeFileSync(tempFilePath, "External content");
 
     const document = await vscode.workspace.openTextDocument(tempFilePath);
@@ -90,10 +103,19 @@ suite("Data Collection Test Suite", () => {
 
     const logFilePath = getLogFilePath();
     const logContent = fs.readFileSync(logFilePath, "utf-8");
-    const logEntries = logContent.trim().split("\n").map(line => JSON.parse(line));
+    const logEntries = logContent
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
 
-    const snapshotEvents = logEntries.filter(entry => entry.type === 'snapshot');
-    assert.strictEqual(snapshotEvents.length, 2, "Should be two snapshot events");
+    const snapshotEvents = logEntries.filter(
+      (entry) => entry.type === "snapshot"
+    );
+    assert.strictEqual(
+      snapshotEvents.length,
+      2,
+      "Should be two snapshot events"
+    );
     assert.strictEqual(snapshotEvents[0].content, "External content");
     assert.strictEqual(snapshotEvents[1].content, "Updated external content");
 
