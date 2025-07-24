@@ -48,6 +48,8 @@
   },
   "type": "module",
   "dependencies": {
+    "@types/diff": "^8.0.0",
+    "diff": "^8.0.2",
     "jsdom": "^26.1.0",
     "shiki": "^3.7.0"
   }
