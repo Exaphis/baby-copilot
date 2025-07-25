@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { CodeRenderer } from "./codeRenderer.js";
+import * as nesUtils from "./nesUtils.js";
 
 let extContext: vscode.ExtensionContext;
 
@@ -78,11 +79,6 @@ async function requestSuggestions(
     return null;
   }
 
-  // wait random time to simulate a delay (0.25 to 0.5s)
-  // await new Promise((resolve) =>
-  //   setTimeout(resolve, Math.random() * 250 + 250)
-  // );
-
   let activeEditor = vscode.window.activeTextEditor;
   if (!activeEditor || token.isCancellationRequested) {
     return null;
@@ -91,34 +87,25 @@ async function requestSuggestions(
   const document = activeEditor.document;
   const position = activeEditor.selection.active;
 
-  const startLineForSnippet = position.line;
-  const endLineForSnippet = Math.min(document.lineCount - 1, position.line + 3);
-
   const rangeForSnippet = new vscode.Range(
-    startLineForSnippet,
+    Math.max(position.line - 5, 0),
     0,
-    endLineForSnippet,
-    document.lineAt(endLineForSnippet).text.length
+    Math.min(position.line + 5, document.lineCount - 1),
+    0
   );
-  const code = document.getText(rangeForSnippet);
-  const language = document.languageId;
 
   // Next Edit Suggestions
-  const deletedLineInSnippet = 1; // The first line in the snippet is the one at the cursor
-  const newDiffLines: { lineNumber: number; type: "added" | "deleted" }[] = [
-    { lineNumber: deletedLineInSnippet, type: "deleted" },
-  ];
-  if (position.line + 1 < document.lineCount) {
-    newDiffLines.push({
-      lineNumber: deletedLineInSnippet + 1,
-      type: "added",
-    });
-  }
-
-  const nesDimensions = {
-    width: 240,
-    height: 80,
-  };
+  const language = document.languageId;
+  const snippet = document.getText(rangeForSnippet);
+  const editedSnippet = await nesUtils.requestEdit(
+    {
+      doc: document,
+      diffTrajectory: [],
+      cursor: position,
+      editableRange: rangeForSnippet,
+    },
+    token
+  );
 
   const uri = vscode.window.activeTextEditor?.document.uri; // pass a URI so VS Code can
   // apply folder- or language-specific
@@ -130,9 +117,13 @@ async function requestSuggestions(
   const lineHeight = getEffectiveLineHeight(editorCfg);
 
   const cr = CodeRenderer.getInstance();
-  await cr.setTheme("dark-plus");
+  const nesDimensions = {
+    width: 240,
+    height:
+      (rangeForSnippet.end.line - rangeForSnippet.start.line + 1) * lineHeight,
+  };
   const svgData = await cr.getDataUri(
-    code,
+    snippet,
     language,
     {
       imageType: "svg",
@@ -141,8 +132,8 @@ async function requestSuggestions(
       lineHeight,
       dimensions: nesDimensions,
     },
-    startLineForSnippet, // currLineOffsetFromTop is the starting line number of the snippet
-    newDiffLines
+    0,
+    []
   );
 
   nesDecorationType = vscode.window.createTextEditorDecorationType({
@@ -151,7 +142,7 @@ async function requestSuggestions(
     before: {
       width: `${nesDimensions.width}px`,
       height: `${nesDimensions.height}px`,
-      textDecoration: "; position: absolute; margin-left: 15ch; z-index: 1000;",
+      textDecoration: "; position: absolute; margin-left: 30ch; z-index: 1000;",
       contentIconPath: vscode.Uri.parse(svgData),
     },
   });
