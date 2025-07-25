@@ -31,10 +31,15 @@ export async function requestEdit(
   const newContent = editableContent + "\nfoobar\n";
 
   return new Promise((resolve) => {
-    setTimeout(() => {
+    const timeout = setTimeout(() => {
       resolve({
         content: newContent,
       });
     }, 500);
+
+    token.onCancellationRequested(() => {
+      clearTimeout(timeout);
+      resolve(null);
+    });
   });
 }

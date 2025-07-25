@@ -48,9 +48,10 @@ async function triggerSuggestions() {
   nesDecorationType?.dispose();
   cmsDecorationType?.dispose();
 
-  suggestCts = new vscode.CancellationTokenSource();
-  const result = await requestSuggestions(suggestCts.token);
-  if (!result || suggestCts.token.isCancellationRequested) {
+  const localCts = new vscode.CancellationTokenSource();
+  suggestCts = localCts;
+  const result = await requestSuggestions(localCts.token);
+  if (!result || localCts.token.isCancellationRequested) {
     return;
   }
 
@@ -67,7 +68,9 @@ async function triggerSuggestions() {
     cmsDecorationType = cmsResult.cmsDecorationType;
     const activeEditor = vscode.window.activeTextEditor;
     if (activeEditor) {
-      activeEditor.setDecorations(cmsDecorationType, [cmsResult.range]);
+      const cursorDecorations: vscode.DecorationOptions[] = [];
+      cursorDecorations.push({ range: cmsResult.range });
+      activeEditor.setDecorations(cmsDecorationType, cursorDecorations);
     }
   }
 }
@@ -166,15 +169,12 @@ async function requestSuggestions(
       contentIconPath: vscode.Uri.parse(contentIconBase64),
     },
   });
-  const cursorDecorations: vscode.DecorationOptions[] = [];
   const cursorRange = new vscode.Range(
     position.line + 1,
     0,
     position.line + 1,
     0
   );
-  cursorDecorations.push({ range: cursorRange });
-  activeEditor.setDecorations(cmsDecorationType, cursorDecorations);
 
   return {
     nesResult: {
