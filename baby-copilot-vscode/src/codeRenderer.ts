@@ -277,11 +277,11 @@ export class CodeRenderer {
               .line {
                 display: block;
                 line-height: ${options.lineHeight - 0.25}px;
+                height: ${options.lineHeight}px;
 
                 span {
                   display: inline-block;
                   vertical-align: middle;
-
                 }
                 span.diff-chars.added {
                   background-color: rgba(0, 255, 0, 0.2);

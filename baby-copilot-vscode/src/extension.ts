@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { CodeRenderer } from "./codeRenderer.js";
 import * as nesUtils from "./nesUtils.js";
+import { diff_match_patch, Diff } from "diff-match-patch";
 
 let extContext: vscode.ExtensionContext;
 
@@ -125,16 +126,21 @@ async function requestSuggestions(
       return null;
     }
 
+    const differ = new diff_match_patch();
+    const diffResult = differ.diff_main(snippet, nesEdit.content);
+    differ.diff_cleanupSemantic(diffResult);
+    console.log(diffResult);
+
+    const inlineDiffContent = diffResult.map((diff: Diff) => diff[1]).join("");
+    const numLines = inlineDiffContent.split(/\r\n|\r|\n/).length;
+
     const cr = CodeRenderer.getInstance();
     const nesDimensions = {
       width: 240,
-      height:
-        // TODO: nes dimensions shouold be based on the number of lines in the diff output
-        (rangeForSnippet.end.line - rangeForSnippet.start.line + 1) *
-        lineHeight,
+      height: numLines * lineHeight,
     };
     const svgData = await cr.getDataUri(
-      nesEdit.content,
+      inlineDiffContent,
       language,
       {
         imageType: "svg",
