@@ -29,6 +29,7 @@ export async function requestEdit(
   const editableContent = context.doc.getText(context.editableRange);
   // add a new line to the end
   const newContent = editableContent + "\nfoobar\n";
+  return { content: "foobar\ntest\n1234\njiejf" };
 
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {

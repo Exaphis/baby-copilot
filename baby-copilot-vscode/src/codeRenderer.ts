@@ -11,20 +11,28 @@
  * creating a render of it.
  */
 import {
-  transformerNotationDiff,
-  transformerNotationHighlight,
-} from "@shikijs/transformers";
-import { JSDOM } from "jsdom";
-import {
   BundledLanguage,
   BundledTheme,
   getSingletonHighlighter,
   Highlighter,
 } from "shiki";
 
+type DiffType = "added" | "deleted";
+
 interface DiffLine {
   lineNumber: number;
-  type: "added" | "deleted";
+  type: DiffType;
+}
+
+interface Position {
+  line: number;
+  character: number;
+}
+
+interface DiffRange {
+  start: Position;
+  end: Position;
+  type: DiffType;
 }
 
 export function escapeForSVG(text: string): string {
@@ -189,30 +197,43 @@ export class CodeRenderer {
   async highlightCode(
     code: string,
     language: string = "javascript",
-    currLineOffsetFromTop: number,
-    newDiffLines: DiffLine[] = []
+    diffLines: DiffLine[] = [],
+    diffRanges: DiffRange[] = []
   ): Promise<string> {
     await this.highlighter!.loadLanguage(language as BundledLanguage);
-    const addedLines = newDiffLines
+
+    const addedLines = diffLines
       .filter((line) => line.type === "added")
-      .map((line) => line.lineNumber + currLineOffsetFromTop);
-    const deletedLines = newDiffLines
+      .map((line) => line.lineNumber);
+    const deletedLines = diffLines
       .filter((line) => line.type === "deleted")
-      .map((line) => line.lineNumber + currLineOffsetFromTop);
+      .map((line) => line.lineNumber);
+
+    const decorations = [];
+    for (const diffRange of diffRanges) {
+      for (const className of ["diff-chars", diffRange.type]) {
+        decorations.push({
+          start: diffRange.start,
+          end: diffRange.end,
+          properties: { class: className },
+        });
+      }
+    }
+
     return this.highlighter!.codeToHtml(code, {
       lang: language,
       theme: this.currentTheme,
+      decorations,
       transformers: [
-        transformerNotationHighlight(),
-        transformerNotationDiff(),
         {
           line(hast, line) {
-            if (addedLines.includes(line)) {
+            // subtract 1 as the passed line is 1-based
+            if (addedLines.includes(line - 1)) {
               this.addClassToHast(hast, "diff");
-              this.addClassToHast(hast, "add");
-            } else if (deletedLines.includes(line)) {
+              this.addClassToHast(hast, "added");
+            } else if (deletedLines.includes(line - 1)) {
               this.addClassToHast(hast, "diff");
-              this.addClassToHast(hast, "remove");
+              this.addClassToHast(hast, "removed");
             }
           },
         },
@@ -224,186 +245,88 @@ export class CodeRenderer {
     code: string,
     language: string = "javascript",
     options: ConversionOptions,
-    currLineOffsetFromTop: number,
-    newDiffLines: DiffLine[]
+    diffLines: DiffLine[] = [],
+    diffRanges: DiffRange[] = []
   ): Promise<Buffer> {
     const highlightedCodeHtml = await this.highlightCode(
       code,
       language,
-      currLineOffsetFromTop,
-      newDiffLines
-    );
-    const outlineStrokeWidth = 3;
-    const { guts, lineBackgrounds } = this.convertShikiHtmlToSvgGut(
-      highlightedCodeHtml,
-      options
+      diffLines,
+      diffRanges
     );
 
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${options.dimensions.width}" height="${options.dimensions.height}" shape-rendering="crispEdges">
-    <style>
-      :root {
-        --purple: rgb(112, 114, 209);
-        --green: rgb(136, 194, 163);
-        --blue: rgb(107, 166, 205);
-      }
-    </style>
-    <g>
-    <rect x="0" y="0" width="${options.dimensions.width}" height="${options.dimensions.height}" fill="${this.editorBackground}" shape-rendering="crispEdges" />
-    ${lineBackgrounds}
-    ${guts}
-    <rect x="0" y="0" width="${options.dimensions.width}" height="${options.dimensions.height}" fill="rgba(0, 0, 0, 0)" shape-rendering="crispEdges" style="stroke-width:${outlineStrokeWidth};stroke:rgba(255, 255, 255, 0.5)" />
-    </g>
-  </svg>`;
-    // console.log(svg);
+    // reset all for easier development, but displaying svg as base64 in img tag decouples it from other css anyway
+    // unsure why y="1" and lineHeight - 0.25 is needed but it doesn't match the code otherwise
+    const svg = `\
+    <svg xmlns="http://www.w3.org/2000/svg" width="${
+      options.dimensions.width
+    }" height="${options.dimensions.height + 1}" shape-rendering="crispEdges">
+      <foreignObject x="0" y="1" width="${options.dimensions.width}" height="${
+      options.dimensions.height + 1
+    }">
+        <div xmlns="http://www.w3.org/1999/xhtml">
+          <style>
+            .wuke-code-svg {
+              * {
+                all: unset;
+                font-family: ${options.fontFamily};
+                font-size: ${options.fontSize}px;
+                vertical-align: middle;
+              }
 
+              .line {
+                display: block;
+                line-height: ${options.lineHeight - 0.25}px;
+
+                span {
+                  display: inline-block;
+                  vertical-align: middle;
+
+                }
+                span.diff-chars.added {
+                  background-color: rgba(0, 255, 0, 0.2);
+                }
+                span.diff-chars.removed {
+                  background-color: rgba(255, 0, 0, 0.2);
+                }
+              }
+
+              .line.diff.removed {
+                background-color: rgba(255, 0, 0, 0.2);
+              }
+              .line.diff.added {
+                background-color: rgba(0, 255, 0, 0.2);
+              }
+            }
+          </style>
+          <div class="wuke-code-svg" style="width: ${
+            options.dimensions.width
+          }px; height: ${options.dimensions.height}px; background-color: ${
+      this.editorBackground
+    }; box-shadow:0 0 0 1px #ffffff30 inset;">
+          ${highlightedCodeHtml}
+          </div>
+        </div>
+      </foreignObject>
+    </svg>`;
     return Buffer.from(svg, "utf8");
-  }
-
-  convertShikiHtmlToSvgGut(
-    shikiHtml: string,
-    options: ConversionOptions
-  ): { guts: string; lineBackgrounds: string } {
-    const dom = new JSDOM(shikiHtml);
-    const document = dom.window.document;
-
-    const lines = Array.from(document.querySelectorAll(".line"));
-    const svgLines = lines.map((line, index) => {
-      const spans = Array.from(line.childNodes)
-        .map((node) => {
-          if (node.nodeType === 3) {
-            return `<tspan xml:space="preserve">${escapeForSVG(
-              node.textContent ?? ""
-            )}</tspan>`;
-          }
-
-          const el = node as HTMLElement;
-          const style = el.getAttribute("style") || "";
-          const colorMatch = style.match(/color:\s*(#[0-9a-fA-F]{6})/);
-          const classes = el.getAttribute("class") || "";
-          let fill = colorMatch ? ` fill="${colorMatch[1]}"` : "";
-          if (classes.includes("highlighted")) {
-            fill = ` fill="${this.editorLineHighlight}"`;
-          }
-
-          const content = el.textContent || "";
-          return `<tspan xml:space="preserve"${fill}>${escapeForSVG(
-            content
-          )}</tspan>`;
-        })
-        .join("");
-
-      // Typography notes:
-      // Each line of code is a <text> inside a <rect>.
-      // Math becomes interesting here; the y value is actually aligned to the topmost border.
-      // So y = 0 will have the rect be flush with the top border.
-      // More importantly, text will also be positioned that way.
-      // Since y = 0 is the axis the text will align itself to, the default settings will actually have the text sitting "on top of" the y = 0 axis, which effectively shifts them up.
-      // To prevent this, we want the alignment axis to be at the middle of each rect, and have the text align itself vertically to the center (skwered by the axis).
-      // The first step is to add lineHeight / 2 to move the axis down.
-      // The second step is to add 'dominant-baseline="central"' to vertically center the text.
-      // Note that we choose "central" over "middle". "middle" will center the text too perfectly, which is actually undesirable!
-      const y = index * options.lineHeight + options.lineHeight / 2;
-      return `<text x="0" y="${y}" font-family="${
-        options.fontFamily
-      }" font-size="${options.fontSize.toString()}" xml:space="preserve" dominant-baseline="central" shape-rendering="crispEdges">${spans}</text>`;
-    });
-
-    const lineBackgrounds = lines
-      .map((line, index) => {
-        const classes = line?.getAttribute("class") || "";
-        const bgColor = classes.includes("highlighted")
-          ? this.editorLineHighlight
-          : classes.includes("diff add")
-          ? "rgba(255, 255, 0, 0.2)"
-          : classes.includes("diff remove")
-          ? "rgba(255, 0, 0, 0.2)"
-          : this.editorBackground;
-
-        const y = index * options.lineHeight;
-        const isFirst = index === 0;
-        const isLast = index === lines.length - 1;
-        const radius = 0;
-        const strokeWidth = 5;
-        // SVG notes:
-        // By default SVGs have anti-aliasing on.
-        // This is undesirable in our case because pixel-perfect alignment of these rectangles will introduce thin gaps.
-        // Turning it off with 'shape-rendering="crispEdges"' solves the issue.
-        return isFirst
-          ? `<path d="M ${0} ${y + options.lineHeight}
-             L ${0} ${y + radius}
-             Q ${0} ${y} ${radius} ${y}
-             L ${options.dimensions.width - radius} ${y}
-             Q ${options.dimensions.width} ${y} ${options.dimensions.width} ${
-              y + radius
-            }
-             L ${options.dimensions.width} ${y + options.lineHeight}
-             Z"
-          fill="${bgColor}" />`
-          : isLast
-          ? `<path d="M ${0} ${y}
-             L ${0} ${y + options.lineHeight - radius}
-             Q ${0} ${y + options.lineHeight} ${radius} ${
-              y + options.lineHeight
-            }
-             L ${options.dimensions.width - radius} ${y + options.lineHeight}
-             Q ${options.dimensions.width} ${y + options.lineHeight} ${
-              options.dimensions.width
-            } ${y + options.lineHeight - 10}
-             L ${options.dimensions.width} ${y}
-             Z"
-          fill="${bgColor}" />`
-          : `<rect x="0" y="${y}" width="100%" height="${options.lineHeight}" fill="${bgColor}" shape-rendering="crispEdges" />`;
-      })
-      .join("\n");
-
-    return {
-      guts: svgLines.join("\n"),
-      lineBackgrounds,
-    };
-  }
-
-  getBackgroundColor(shikiHtml: string): string {
-    const dom = new JSDOM(shikiHtml);
-    const document = dom.window.document;
-
-    const preElement = document.querySelector("pre");
-    let backgroundColor = "#333333"; // Default white background
-    if (preElement) {
-      const style = preElement.getAttribute("style") || "";
-      const bgColorMatch = style.match(/background-color:\s*(#[0-9a-fA-F]{6})/);
-      if (bgColorMatch) {
-        backgroundColor = bgColorMatch[1];
-      }
-    }
-
-    return backgroundColor;
   }
 
   async getDataUri(
     code: string,
     language: string = "javascript",
     options: ConversionOptions,
-    currLineOffsetFromTop: number,
-    newDiffLines: DiffLine[]
+    diffLines: DiffLine[] = [],
+    diffRanges: DiffRange[] = []
   ): Promise<DataUri> {
     switch (options.imageType) {
-      // case "png":
-      //   const pngBuffer = await this.convertToPNG(
-      //     code,
-      //     language,
-      //     fontSize,
-      //     dimensions,
-      //     lineHeight,
-      //     options,
-      //   );
-      //   return `data:image/png;base64,${pngBuffer.data.toString("base64")}`;
       case "svg":
         const svgBuffer = await this.convertToSVG(
           code,
           language,
           options,
-          currLineOffsetFromTop,
-          newDiffLines
+          diffLines,
+          diffRanges
         );
         return `data:image/svg+xml;base64,${svgBuffer.toString("base64")}`;
     }

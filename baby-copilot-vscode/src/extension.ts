@@ -27,15 +27,19 @@ let nesDecorationType: vscode.TextEditorDecorationType | null = null;
 // Cursor movement suggestion
 let cmsDecorationType: vscode.TextEditorDecorationType | null = null;
 
+interface NesSuggestionResult {
+  nesDecorationType: vscode.TextEditorDecorationType;
+  range: vscode.Range;
+}
+
+interface CmsSuggestionResult {
+  cmsDecorationType: vscode.TextEditorDecorationType;
+  range: vscode.Range;
+}
+
 interface SuggestionResult {
-  nesResult: {
-    nesDecorationType: vscode.TextEditorDecorationType;
-    range: vscode.Range;
-  } | null;
-  cmsResult: {
-    cmsDecorationType: vscode.TextEditorDecorationType;
-    range: vscode.Range;
-  } | null;
+  nesResult: NesSuggestionResult | null;
+  cmsResult: CmsSuggestionResult | null;
 }
 
 let suggestCts: vscode.CancellationTokenSource | null = null;
@@ -83,32 +87,12 @@ async function requestSuggestions(
   }
 
   let activeEditor = vscode.window.activeTextEditor;
-  if (!activeEditor || token.isCancellationRequested) {
+  if (activeEditor === undefined || token.isCancellationRequested) {
     return null;
   }
 
   const document = activeEditor.document;
   const position = activeEditor.selection.active;
-
-  const rangeForSnippet = new vscode.Range(
-    Math.max(position.line - 5, 0),
-    0,
-    Math.min(position.line + 5, document.lineCount - 1),
-    0
-  );
-
-  // Next Edit Suggestions
-  const language = document.languageId;
-  const snippet = document.getText(rangeForSnippet);
-  const editedSnippet = await nesUtils.requestEdit(
-    {
-      doc: document,
-      diffTrajectory: [],
-      cursor: position,
-      editableRange: rangeForSnippet,
-    },
-    token
-  );
 
   const uri = vscode.window.activeTextEditor?.document.uri; // pass a URI so VS Code can
   // apply folder- or language-specific
@@ -119,72 +103,102 @@ async function requestSuggestions(
   const fontSize = editorCfg.get<number>("fontSize") || 14;
   const lineHeight = getEffectiveLineHeight(editorCfg);
 
-  const cr = CodeRenderer.getInstance();
-  const nesDimensions = {
-    width: 240,
-    height:
-      (rangeForSnippet.end.line - rangeForSnippet.start.line + 1) * lineHeight,
-  };
-  const svgData = await cr.getDataUri(
-    snippet,
-    language,
+  const rangeForSnippet = document.validateRange(
+    new vscode.Range(Math.max(position.line - 5, 0), 0, position.line + 5, 0)
+  );
+
+  // Next Edit Suggestions
+  const language = document.languageId;
+  const snippet = document.getText(rangeForSnippet);
+  const nesEdit = await nesUtils.requestEdit(
     {
-      imageType: "svg",
-      fontFamily,
-      fontSize,
-      lineHeight,
-      dimensions: nesDimensions,
+      doc: document,
+      diffTrajectory: [],
+      cursor: position,
+      editableRange: rangeForSnippet,
     },
-    0,
-    []
+    token
   );
 
-  nesDecorationType = vscode.window.createTextEditorDecorationType({
-    isWholeLine: true,
-    rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
-    before: {
-      width: `${nesDimensions.width}px`,
-      height: `${nesDimensions.height}px`,
-      textDecoration: "; position: absolute; margin-left: 30ch; z-index: 1000;",
-      contentIconPath: vscode.Uri.parse(svgData),
-    },
-  });
+  async function getNesResult(): Promise<NesSuggestionResult | null> {
+    if (nesEdit === null) {
+      return null;
+    }
 
-  const nesRange = activeEditor.document.lineAt(position.line).range;
+    const cr = CodeRenderer.getInstance();
+    const nesDimensions = {
+      width: 240,
+      height:
+        // TODO: nes dimensions shouold be based on the number of lines in the diff output
+        (rangeForSnippet.end.line - rangeForSnippet.start.line + 1) *
+        lineHeight,
+    };
+    const svgData = await cr.getDataUri(
+      nesEdit.content,
+      language,
+      {
+        imageType: "svg",
+        fontFamily,
+        fontSize,
+        lineHeight,
+        dimensions: nesDimensions,
+      },
+      []
+    );
 
-  // cursor movement
-  const cmsSvgPath = path.join(
-    extContext.extensionPath,
-    "src",
-    "cursorSuggestion.svg"
-  );
-  const cmsSvgData = fs.readFileSync(cmsSvgPath, "utf8");
-  const contentIconBase64 =
-    "data:image/svg+xml;base64," + Buffer.from(cmsSvgData).toString("base64");
-  cmsDecorationType = vscode.window.createTextEditorDecorationType({
-    rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
-    after: {
-      // TODO: it doesn't show up if we don't set aspect-ratio... why?
-      textDecoration: `; position: absolute; z-index: 1000; height: ${lineHeight}px; aspect-ratio: 220.86 / 43.92;`,
-      contentIconPath: vscode.Uri.parse(contentIconBase64),
-    },
-  });
-  const cursorRange = new vscode.Range(
-    position.line + 1,
-    0,
-    position.line + 1,
-    0
-  );
+    const newNesDecorationType = vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
+      before: {
+        width: `${nesDimensions.width}px`,
+        height: `${nesDimensions.height}px`,
+        textDecoration:
+          "; position: absolute; margin-left: 30ch; z-index: 1000;",
+        contentIconPath: vscode.Uri.parse(svgData),
+      },
+    });
+
+    return {
+      nesDecorationType: newNesDecorationType,
+      range: rangeForSnippet,
+    };
+  }
+
+  async function getCmsResult(): Promise<CmsSuggestionResult | null> {
+    // cursor movement
+    const cmsSvgPath = path.join(
+      extContext.extensionPath,
+      "src",
+      "cursorSuggestion.svg"
+    );
+    const cmsSvgData = fs.readFileSync(cmsSvgPath, "utf8");
+    const contentIconBase64 =
+      "data:image/svg+xml;base64," + Buffer.from(cmsSvgData).toString("base64");
+
+    const newCmsDecorationType = vscode.window.createTextEditorDecorationType({
+      rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
+      after: {
+        // TODO: it doesn't show up if we don't set aspect-ratio... why?
+        textDecoration: `; position: absolute; z-index: 1000; height: ${lineHeight}px; aspect-ratio: 220.86 / 43.92;`,
+        contentIconPath: vscode.Uri.parse(contentIconBase64),
+      },
+    });
+    const cursorRange = new vscode.Range(
+      position.line + 1,
+      0,
+      position.line + 1,
+      0
+    );
+
+    return {
+      cmsDecorationType: newCmsDecorationType,
+      range: cursorRange,
+    };
+  }
 
   return {
-    nesResult: {
-      nesDecorationType,
-      range: nesRange,
-    },
-    cmsResult: {
-      cmsDecorationType,
-      range: cursorRange,
-    },
+    nesResult: await getNesResult(),
+    cmsResult: await getCmsResult(),
   };
 }
 
