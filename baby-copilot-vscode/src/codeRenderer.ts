@@ -17,19 +17,19 @@ import {
   Highlighter,
 } from "shiki";
 
-type DiffType = "added" | "deleted";
+export type DiffType = "added" | "removed";
 
-interface DiffLine {
+export interface DiffLine {
   lineNumber: number;
   type: DiffType;
 }
 
-interface Position {
+export interface Position {
   line: number;
   character: number;
 }
 
-interface DiffRange {
+export interface DiffRange {
   start: Position;
   end: Position;
   type: DiffType;
@@ -206,12 +206,12 @@ export class CodeRenderer {
       .filter((line) => line.type === "added")
       .map((line) => line.lineNumber);
     const deletedLines = diffLines
-      .filter((line) => line.type === "deleted")
+      .filter((line) => line.type === "removed")
       .map((line) => line.lineNumber);
 
     const decorations = [];
     for (const diffRange of diffRanges) {
-      for (const className of ["diff-chars", diffRange.type]) {
+      for (const className of ["diff", diffRange.type]) {
         decorations.push({
           start: diffRange.start,
           end: diffRange.end,
@@ -282,11 +282,12 @@ export class CodeRenderer {
                 span {
                   display: inline-block;
                   vertical-align: middle;
+                  white-space: pre;
                 }
-                span.diff-chars.added {
+                span.diff.added {
                   background-color: rgba(0, 255, 0, 0.2);
                 }
-                span.diff-chars.removed {
+                span.diff.removed {
                   background-color: rgba(255, 0, 0, 0.2);
                 }
               }

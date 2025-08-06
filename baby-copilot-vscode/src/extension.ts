@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { CodeRenderer } from "./codeRenderer.js";
+import { CodeRenderer, DiffLine, DiffRange, DiffType } from "./codeRenderer.js";
 import * as nesUtils from "./nesUtils.js";
 import { diff_match_patch, Diff } from "diff-match-patch";
 
@@ -131,16 +131,45 @@ async function requestSuggestions(
     differ.diff_cleanupSemantic(diffResult);
     console.log(diffResult);
 
-    const inlineDiffContent = diffResult.map((diff: Diff) => diff[1]).join("");
-    const numLines = inlineDiffContent.split(/\r\n|\r|\n/).length;
+    const finalContent = diffResult.map((diff: Diff) => diff[1]).join("");
+    const finalContentLines = finalContent.split(/\r\n|\r|\n/);
+    const numLines = finalContentLines.length;
+
+    // TODO: this rendering still has some issues.
+    // For example:
+    // left:     right:
+    // fooba     foobar
+    //           test
+    // test
+    //
+    // This doesn't show the removal of the newline properly.
+    const diffLines: DiffLine[] = [];
+    const diffRanges: DiffRange[] = []; // range ends are exclusive
+    let line = 0;
+    let char = 0;
+    for (const diff of diffResult) {
+      const lines = diff[1].split(/\r\n|\r|\n/);
+      const lastLine = lines[lines.length - 1];
+      const newLine = line + lines.length - 1;
+      const newChar = lastLine.length + (lines.length === 1 ? char : 0);
+
+      if (diff[0] !== 0) {
+        const diffType: DiffType = diff[0] === 1 ? "added" : "removed";
+        diffRanges.push({
+          start: { line: line, character: char },
+          end: { line: newLine, character: newChar },
+          type: diffType,
+        });
+      }
+
+      line = newLine;
+      char = newChar;
+    }
 
     const cr = CodeRenderer.getInstance();
-    const nesDimensions = {
-      width: 240,
-      height: numLines * lineHeight,
-    };
+    const nesDimensions = { width: 240, height: numLines * lineHeight };
     const svgData = await cr.getDataUri(
-      inlineDiffContent,
+      finalContent,
       language,
       {
         imageType: "svg",
@@ -149,7 +178,8 @@ async function requestSuggestions(
         lineHeight,
         dimensions: nesDimensions,
       },
-      []
+      diffLines,
+      diffRanges
     );
 
     const newNesDecorationType = vscode.window.createTextEditorDecorationType({
