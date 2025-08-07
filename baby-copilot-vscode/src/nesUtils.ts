@@ -27,9 +27,16 @@ export async function requestEdit(
   // Simulate a request to an external service
   // In a real implementation, this would be an HTTP request to a server
   const editableContent = context.doc.getText(context.editableRange);
-  // add a new line to the end
-  const newContent = editableContent + "\nfoobar\n";
-  return { content: "foobar\ntest\n1234\njiejf" };
+  const lines = editableContent.split("\n");
+
+  // shuffle lines to create a random perturbation
+  for (let i = lines.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [lines[i], lines[j]] = [lines[j], lines[i]];
+  }
+
+  const newContent = lines.join("\n");
+  return { content: newContent };
 
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {

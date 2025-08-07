@@ -6,6 +6,10 @@ import * as nesUtils from "./nesUtils.js";
 import { diff_match_patch, Diff } from "diff-match-patch";
 
 let extContext: vscode.ExtensionContext;
+let lastNesSuggestion: {
+  suggestion: nesUtils.NesSuggestion;
+  range: vscode.Range;
+} | null = null;
 
 function getEffectiveLineHeight(cfg: vscode.WorkspaceConfiguration): number {
   const lineHeight = cfg.get<number>("lineHeight") || 0;
@@ -52,6 +56,12 @@ async function triggerSuggestions() {
 
   nesDecorationType?.dispose();
   cmsDecorationType?.dispose();
+  console.log("cleared hasSuggestion");
+  vscode.commands.executeCommand(
+    "setContext",
+    "baby-copilot.hasSuggestion",
+    false
+  );
 
   const localCts = new vscode.CancellationTokenSource();
   suggestCts = localCts;
@@ -66,6 +76,13 @@ async function triggerSuggestions() {
     const activeEditor = vscode.window.activeTextEditor;
     if (activeEditor) {
       activeEditor.setDecorations(nesDecorationType, [nesResult.range]);
+      console.log("SET hasSuggestion");
+      vscode.commands.executeCommand(
+        "setContext",
+        "baby-copilot.hasSuggestion",
+        true
+      );
+      vscode.commands.executeCommand("setContext", "inlineEditIsVisible", true);
     }
   }
 
@@ -120,6 +137,12 @@ async function requestSuggestions(
     },
     token
   );
+
+  if (nesEdit) {
+    lastNesSuggestion = { suggestion: nesEdit, range: rangeForSnippet };
+  } else {
+    lastNesSuggestion = null;
+  }
 
   async function getNesResult(): Promise<NesSuggestionResult | null> {
     if (nesEdit === null) {
@@ -234,7 +257,8 @@ async function requestSuggestions(
 
   return {
     nesResult: await getNesResult(),
-    cmsResult: await getCmsResult(),
+    // cmsResult: await getCmsResult(),
+    cmsResult: null,
   };
 }
 
@@ -274,7 +298,38 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  context.subscriptions.push(disposable, viewLogsCommand);
+  const acceptSuggestionCommand = vscode.commands.registerCommand(
+    "baby-copilot.acceptSuggestion",
+    async () => {
+      if (lastNesSuggestion && vscode.window.activeTextEditor) {
+        const editor = vscode.window.activeTextEditor;
+        editor.edit((editBuilder) => {
+          editBuilder.replace(
+            lastNesSuggestion!.range,
+            lastNesSuggestion!.suggestion.content
+          );
+        });
+        // Clear suggestion
+        nesDecorationType?.dispose();
+        cmsDecorationType?.dispose();
+        lastNesSuggestion = null;
+        console.log("cleared hasSuggestion");
+        vscode.commands.executeCommand(
+          "setContext",
+          "baby-copilot.hasSuggestion",
+          false
+        );
+
+        await triggerSuggestions();
+      }
+    }
+  );
+
+  context.subscriptions.push(
+    disposable,
+    viewLogsCommand,
+    acceptSuggestionCommand
+  );
 
   vscode.window.onDidChangeTextEditorSelection(async (event) => {
     await triggerSuggestions();

@@ -22,6 +22,17 @@
       {
         "command": "baby-copilot.viewLogs",
         "title": "View Data Collection Logs"
+      },
+      {
+        "command": "baby-copilot.acceptSuggestion",
+        "title": "Accept Suggestion"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "baby-copilot.acceptSuggestion",
+        "key": "Tab",
+        "when": "baby-copilot.hasSuggestion"
       }
     ]
   },
