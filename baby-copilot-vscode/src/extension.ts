@@ -48,6 +48,16 @@ interface SuggestionResult {
 }
 
 let suggestCts: vscode.CancellationTokenSource | null = null;
+let suggestDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSuggestionsDebounced(delayMs = 250) {
+  if (suggestDebounceTimer) {
+    clearTimeout(suggestDebounceTimer);
+  }
+  suggestDebounceTimer = setTimeout(() => {
+    triggerSuggestions().catch((e) => console.error("triggerSuggestions error:", e));
+  }, delayMs);
+}
 
 async function triggerSuggestions() {
   // Cancel any in-flight request
@@ -320,7 +330,7 @@ export async function activate(context: vscode.ExtensionContext) {
           false
         );
 
-        await triggerSuggestions();
+        scheduleSuggestionsDebounced();
       }
     }
   );
@@ -332,14 +342,14 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   vscode.window.onDidChangeTextEditorSelection(async (event) => {
-    await triggerSuggestions();
+    scheduleSuggestionsDebounced();
   });
 
   vscode.window.onDidChangeActiveTextEditor(async (editor) => {
-    await triggerSuggestions();
+    scheduleSuggestionsDebounced();
   });
 
-  await triggerSuggestions();
+  scheduleSuggestionsDebounced();
 }
 
 // This method is called when your extension is deactivated
