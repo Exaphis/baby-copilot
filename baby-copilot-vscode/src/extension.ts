@@ -133,7 +133,7 @@ async function requestSuggestions(
   const lineHeight = getEffectiveLineHeight(editorCfg);
 
   const rangeForSnippet = document.validateRange(
-    new vscode.Range(Math.max(position.line - 5, 0), 0, position.line + 5, 0)
+    new vscode.Range(Math.max(position.line - 10, 0), 0, position.line + 10, 0)
   );
 
   // Next Edit Suggestions

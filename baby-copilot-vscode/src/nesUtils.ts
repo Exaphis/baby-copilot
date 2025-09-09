@@ -137,6 +137,7 @@ Your task is to predict and complete the changes the developer would have made n
 - Ensure that you do not output duplicate code that exists outside of these tags.
 - Avoid undoing or reverting the developer's last change unless there are obvious typos or errors.
 - Output the modified editable region in a single <edited_region> tag.
+- If no changes are necessary, do not output a <edited_region> tag.
 `;
 
 function buildUserMessage(context: NesContext): string {
