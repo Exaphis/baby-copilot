@@ -70,8 +70,6 @@ export class CodeRenderer {
   private static instance: CodeRenderer;
   private currentTheme: string = "dark-plus";
   private editorBackground: string = "#000000";
-  private editorForeground: string = "#FFFFFF";
-  private editorLineHighlight: string = "#000000";
   private highlighter: Highlighter | null = null;
 
   private constructor() {}
@@ -101,9 +99,6 @@ export class CodeRenderer {
       const th = this.highlighter.getTheme(this.currentTheme);
 
       this.editorBackground = th.bg;
-      this.editorForeground = th.fg;
-      this.editorLineHighlight =
-        th.colors!["editor.lineHighlightBackground"] ?? "#000000";
     } else {
       this.currentTheme = "dark-plus";
     }
@@ -256,6 +251,7 @@ export class CodeRenderer {
                 font-family: ${options.fontFamily};
                 font-size: ${options.fontSize}px;
                 vertical-align: middle;
+                overflow: hidden;
               }
 
               .line {
@@ -318,7 +314,10 @@ export class CodeRenderer {
   }
 
   // Utilities for diff rendering
-  public computeDiff(left: string, right: string): {
+  public computeDiff(
+    left: string,
+    right: string
+  ): {
     content: string;
     diffRanges: DiffRange[];
   } {
