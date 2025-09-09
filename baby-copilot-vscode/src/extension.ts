@@ -308,10 +308,57 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  const cancelSuggestionCommand = vscode.commands.registerCommand(
+    "baby-copilot.cancelSuggestion",
+    async () => {
+      // Cancel any in-flight suggestion request
+      suggestCts?.cancel();
+      suggestCts?.dispose();
+      suggestCts = null;
+
+      // Dispose current decorations and clear state
+      nesDecorationType?.dispose();
+      cmsDecorationType?.dispose();
+      nesDecorationType = null;
+      cmsDecorationType = null;
+      lastNesSuggestion = null;
+      console.log("cleared hasSuggestion via cancel");
+      await vscode.commands.executeCommand(
+        "setContext",
+        "baby-copilot.hasSuggestion",
+        false
+      );
+      await vscode.commands.executeCommand(
+        "setContext",
+        "inlineEditIsVisible",
+        false
+      );
+
+      // Best-effort pass-through to common Escape handlers (e.g., VSCodeVim/Neovim)
+      const maybeExecute = async (cmd: string) => {
+        try {
+          await vscode.commands.executeCommand(cmd);
+        } catch {
+          // ignore if command is not available
+        }
+      };
+
+      // If VSCodeVim is installed, invoke its escape
+      if (vscode.extensions.getExtension("vscodevim.vim")) {
+        await maybeExecute("extension.vim_escape");
+      }
+      // If VSCode Neovim is installed, invoke its escape
+      if (vscode.extensions.getExtension("asvetliakov.vscode-neovim")) {
+        await maybeExecute("vscode-neovim.escape");
+      }
+    }
+  );
+
   context.subscriptions.push(
     disposable,
     viewLogsCommand,
-    acceptSuggestionCommand
+    acceptSuggestionCommand,
+    cancelSuggestionCommand
   );
 
   vscode.window.onDidChangeTextEditorSelection(async (event) => {
