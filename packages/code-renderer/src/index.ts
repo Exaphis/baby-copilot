@@ -1,15 +1,5 @@
-// https://github.com/continuedev/continue/blob/b25a71c8ff96a41e39145ff8504c61a549c699a9/core/codeRenderer/CodeRenderer.ts#L4
+// Extracted from baby-copilot-vscode/src/codeRenderer.ts
 
-/**
- * CodeRenderer is a class that, when given a code string,
- * highlights the code string using shiki and
- * returns a svg representation of it.
- * We could technically just call shiki's methods to do a
- * one-liner syntax highlighting code, but
- * a separate class for this is useful because
- * we rarely ever need syntax highlighting outside of
- * creating a render of it.
- */
 import {
   BundledLanguage,
   BundledTheme,
@@ -49,11 +39,6 @@ export function kebabOfStr(str: string): string {
     .replace(/([a-z])([A-Z])/g, "$1-$2") // handle camelCase and PascalCase
     .replace(/[\s_]+/g, "-") // replace spaces and underscores with hyphens
     .toLowerCase();
-}
-
-interface CodeRendererOptions {
-  themesDir?: string;
-  theme?: string;
 }
 
 interface HTMLOptions {
@@ -209,7 +194,7 @@ export class CodeRenderer {
       .filter((line) => line.type === "removed")
       .map((line) => line.lineNumber);
 
-    const decorations = [];
+    const decorations = [] as any[];
     for (const diffRange of diffRanges) {
       for (const className of ["diff", diffRange.type]) {
         decorations.push({
@@ -226,7 +211,7 @@ export class CodeRenderer {
       decorations,
       transformers: [
         {
-          line(hast, line) {
+          line(hast: any, line: number) {
             // subtract 1 as the passed line is 1-based
             if (addedLines.includes(line - 1)) {
               this.addClassToHast(hast, "diff");
@@ -236,7 +221,7 @@ export class CodeRenderer {
               this.addClassToHast(hast, "removed");
             }
           },
-        },
+        } as any,
       ],
     });
   }
@@ -255,8 +240,6 @@ export class CodeRenderer {
       diffRanges
     );
 
-    // reset all for easier development, but displaying svg as base64 in img tag decouples it from other css anyway
-    // unsure why y="1" and lineHeight - 0.25 is needed but it doesn't match the code otherwise
     const svg = `\
     <svg xmlns="http://www.w3.org/2000/svg" width="${
       options.dimensions.width
@@ -333,3 +316,4 @@ export class CodeRenderer {
     }
   }
 }
+

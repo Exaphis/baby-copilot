@@ -64,6 +64,6 @@
     "diff": "^8.0.2",
     "diff-match-patch": "^1.0.5",
     "jsdom": "^26.1.0",
-    "shiki": "^3.7.0"
+    "@baby-copilot/code-renderer": "workspace:*"
   }
 }

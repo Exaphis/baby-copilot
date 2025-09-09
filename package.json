@@ -1,0 +1,13 @@
+{
+  "name": "baby-copilot-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "baby-copilot-vscode"
+  ],
+  "scripts": {
+    "build": "pnpm -r --filter ./packages/... --filter ./baby-copilot-vscode build",
+    "build:all": "pnpm -r build"
+  }
+}
+

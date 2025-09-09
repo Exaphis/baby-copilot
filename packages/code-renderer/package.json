@@ -1,0 +1,28 @@
+{
+  "name": "@baby-copilot/code-renderer",
+  "version": "0.0.1",
+  "private": false,
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -w -p .",
+    "clean": "rm -rf dist",
+    "prepare": "pnpm run build"
+  },
+  "dependencies": {
+    "shiki": "^3.7.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "@types/node": "20.x"
+  }
+}

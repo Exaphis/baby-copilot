@@ -1,1 +1,24 @@
-ts-test/
+## Build outputs
+out
+dist
+
+## Dependencies
+node_modules
+
+## Editors/OS
+.vscode-test/
+.DS_Store
+.idea/
+
+## Logs
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+## VS Code extension package
+*.vsix
+
+## Monorepo hygiene
+# Keep only the root lockfile; ignore accidental nested ones
+baby-copilot-vscode/pnpm-lock.yaml

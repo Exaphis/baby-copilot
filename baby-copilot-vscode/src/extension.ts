@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { CodeRenderer, DiffLine, DiffRange, DiffType } from "./codeRenderer.js";
+import { CodeRenderer, DiffLine, DiffRange, DiffType } from "@baby-copilot/code-renderer";
 import * as nesUtils from "./nesUtils.js";
 import { diff_match_patch, Diff } from "diff-match-patch";
 
