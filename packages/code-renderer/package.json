@@ -16,7 +16,8 @@
     "build": "tsc -p .",
     "watch": "tsc -w -p .",
     "clean": "rm -rf dist",
-    "prepare": "pnpm run build"
+    "prepare": "pnpm run build",
+    "test": "pnpm run build && node --test"
   },
   "dependencies": {
     "shiki": "^3.7.0",
