@@ -1,4 +1,4 @@
 packages:
   - packages/*
   - baby-copilot-vscode
-
+  - demo-site

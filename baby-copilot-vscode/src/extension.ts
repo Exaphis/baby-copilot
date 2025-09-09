@@ -1,9 +1,8 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { CodeRenderer, DiffLine, DiffRange, DiffType } from "@baby-copilot/code-renderer";
+import { CodeRenderer } from "@baby-copilot/code-renderer";
 import * as nesUtils from "./nesUtils.js";
-import { diff_match_patch, Diff } from "diff-match-patch";
 
 let extContext: vscode.ExtensionContext;
 let lastNesSuggestion: {
@@ -55,7 +54,9 @@ function scheduleSuggestionsDebounced(delayMs = 250) {
     clearTimeout(suggestDebounceTimer);
   }
   suggestDebounceTimer = setTimeout(() => {
-    triggerSuggestions().catch((e) => console.error("triggerSuggestions error:", e));
+    triggerSuggestions().catch((e) =>
+      console.error("triggerSuggestions error:", e)
+    );
   }, delayMs);
 }
 
@@ -159,12 +160,8 @@ async function requestSuggestions(
       return null;
     }
 
-    const differ = new diff_match_patch();
-    const diffResult = differ.diff_main(snippet, nesEdit.content);
-    differ.diff_cleanupSemantic(diffResult);
-    console.log(diffResult);
-
-    const finalContent = diffResult.map((diff: Diff) => diff[1]).join("");
+    const cr = CodeRenderer.getInstance();
+    const { content: finalContent } = cr.computeDiff(snippet, nesEdit.content);
     const finalContentLines = finalContent.split(/\r\n|\r|\n/);
     const numLines = finalContentLines.length;
 
@@ -176,33 +173,11 @@ async function requestSuggestions(
     // test
     //
     // This doesn't show the removal of the newline properly.
-    const diffLines: DiffLine[] = [];
-    const diffRanges: DiffRange[] = []; // range ends are exclusive
-    let line = 0;
-    let char = 0;
-    for (const diff of diffResult) {
-      const lines = diff[1].split(/\r\n|\r|\n/);
-      const lastLine = lines[lines.length - 1];
-      const newLine = line + lines.length - 1;
-      const newChar = lastLine.length + (lines.length === 1 ? char : 0);
-
-      if (diff[0] !== 0) {
-        const diffType: DiffType = diff[0] === 1 ? "added" : "removed";
-        diffRanges.push({
-          start: { line: line, character: char },
-          end: { line: newLine, character: newChar },
-          type: diffType,
-        });
-      }
-
-      line = newLine;
-      char = newChar;
-    }
-
-    const cr = CodeRenderer.getInstance();
     const nesDimensions = { width: 240, height: numLines * lineHeight };
-    const svgData = await cr.getDataUri(
-      finalContent,
+    // Use built-in diff rendering
+    const svgData = await cr.getDiffDataUri(
+      snippet,
+      nesEdit.content,
       language,
       {
         imageType: "svg",
@@ -210,9 +185,7 @@ async function requestSuggestions(
         fontSize,
         lineHeight,
         dimensions: nesDimensions,
-      },
-      diffLines,
-      diffRanges
+      }
     );
 
     const newNesDecorationType = vscode.window.createTextEditorDecorationType({

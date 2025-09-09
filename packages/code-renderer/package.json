@@ -19,10 +19,12 @@
     "prepare": "pnpm run build"
   },
   "dependencies": {
-    "shiki": "^3.7.0"
+    "shiki": "^3.7.0",
+    "diff-match-patch": "^1.0.5"
   },
   "devDependencies": {
     "typescript": "^5.8.3",
-    "@types/node": "20.x"
+    "@types/node": "20.x",
+    "@types/diff-match-patch": "^1.0.36"
   }
 }

@@ -6,6 +6,7 @@ import {
   getSingletonHighlighter,
   Highlighter,
 } from "shiki";
+import { diff_match_patch, Diff } from "diff-match-patch";
 
 export type DiffType = "added" | "removed";
 
@@ -315,5 +316,50 @@ export class CodeRenderer {
         return `data:image/svg+xml;base64,${svgBuffer.toString("base64")}`;
     }
   }
-}
 
+  // Utilities for diff rendering
+  public computeDiff(left: string, right: string): {
+    content: string;
+    diffRanges: DiffRange[];
+  } {
+    const differ = new diff_match_patch();
+    const diffResult: Diff[] = differ.diff_main(left, right);
+    differ.diff_cleanupSemantic(diffResult);
+
+    const content = diffResult.map((d) => d[1]).join("");
+
+    const diffRanges: DiffRange[] = [];
+    let line = 0;
+    let char = 0;
+    for (const diff of diffResult) {
+      const linesArr = diff[1].split(/\r\n|\r|\n/);
+      const lastLine = linesArr[linesArr.length - 1];
+      const newLine = line + linesArr.length - 1;
+      const newChar = lastLine.length + (linesArr.length === 1 ? char : 0);
+
+      if (diff[0] !== 0) {
+        const diffType: DiffType = diff[0] === 1 ? "added" : "removed";
+        diffRanges.push({
+          start: { line, character: char },
+          end: { line: newLine, character: newChar },
+          type: diffType,
+        });
+      }
+
+      line = newLine;
+      char = newChar;
+    }
+
+    return { content, diffRanges };
+  }
+
+  public async getDiffDataUri(
+    left: string,
+    right: string,
+    language: string,
+    options: ConversionOptions
+  ): Promise<DataUri> {
+    const { content, diffRanges } = this.computeDiff(left, right);
+    return this.getDataUri(content, language, options, [], diffRanges);
+  }
+}
