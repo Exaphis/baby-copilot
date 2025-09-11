@@ -229,6 +229,23 @@ export class CodeRenderer {
     diffLines: DiffLine[] = [],
     diffRanges: DiffRange[] = []
   ): Promise<Buffer> {
+    // Determine width based on longest line length.
+    // We do this instead of using overflow: hidden because for unknown reasons
+    // it cuts off long lines at the start instead of at the end sometimes?
+    // e.g., a long comment will get cut off completely
+    const TAB_SIZE = 4;
+    const lines = code.split(/\r\n|\r|\n/);
+    const maxLineCount = lines.reduce((max, l) => {
+      const visual = l.replace(/\t/g, " ".repeat(TAB_SIZE));
+      return Math.max(max, visual.length);
+    }, 0);
+
+    // fontSize is not the width, but should be safe because it is larger
+    const maxWidthPx = Math.max(
+      options.dimensions.width,
+      maxLineCount * options.fontSize
+    );
+
     const highlightedCodeHtml = await this.highlightCode(
       code,
       language,
@@ -240,7 +257,7 @@ export class CodeRenderer {
     <svg xmlns="http://www.w3.org/2000/svg" width="${
       options.dimensions.width
     }" height="${options.dimensions.height + 1}" shape-rendering="crispEdges">
-      <foreignObject x="0" y="1" width="${options.dimensions.width}" height="${
+      <foreignObject x="0" y="1" width="${maxWidthPx}" height="${
       options.dimensions.height + 1
     }">
         <div xmlns="http://www.w3.org/1999/xhtml">
@@ -251,7 +268,6 @@ export class CodeRenderer {
                 font-family: ${options.fontFamily};
                 font-size: ${options.fontSize}px;
                 vertical-align: middle;
-                overflow: hidden;
               }
 
               .line {
@@ -280,9 +296,9 @@ export class CodeRenderer {
               }
             }
           </style>
-          <div class="wuke-code-svg" style="width: ${
-            options.dimensions.width
-          }px; height: ${options.dimensions.height}px; background-color: ${
+          <div class="wuke-code-svg" style="width: ${maxWidthPx}px; height: ${
+      options.dimensions.height
+    }px; background-color: ${
       this.editorBackground
     }; box-shadow:0 0 0 1px #ffffff30 inset;">
           ${highlightedCodeHtml}

@@ -59,7 +59,7 @@ app.get("/diff.svg", async (req: Request, res: Response) => {
     const { content } = CodeRenderer.getInstance().computeDiff(left, right);
     const lines = content.split(/\r\n|\r|\n/).length;
     const dimensions = {
-      width: 800,
+      width: 400,
       height: Math.max(lineHeight, lines * lineHeight),
     };
     const fontFamily =
