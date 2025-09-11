@@ -29,7 +29,7 @@ export async function requestEdit(
     const systemPrompt = SYSTEM_PROMPT;
     const userMessage = buildUserMessage(context);
 
-    const model = "llama-3.3-70b";
+    const model = "qwen-3-coder-480b";
     const url = "http://localhost:8000/v1/chat/completions";
     const temperature = 0.2;
     const maxTokens = 800;
@@ -92,6 +92,15 @@ export async function requestEdit(
         console.warn(`Got:\n${content}`);
         return null;
       }
+      // If generated edit matches current editable text, return null (no suggestion)
+      const currentEditable = context.doc.getText(context.editableRange);
+      if (currentEditable === extracted) {
+        const elapsedNoChange = Date.now() - reqStart;
+        console.log(
+          `requestEdit latency (no-change): ${elapsedNoChange}ms; model=${model}`
+        );
+        return null;
+      }
       const elapsed = Date.now() - reqStart;
       const usage = data?.usage;
       const usageStr = usage
@@ -137,7 +146,7 @@ Your task is to predict and complete the changes the developer would have made n
 - Ensure that you do not output duplicate code that exists outside of these tags.
 - Avoid undoing or reverting the developer's last change unless there are obvious typos or errors.
 - Output the modified editable region in a single <edited_region> tag.
-- If no changes are necessary, do not output a <edited_region> tag.
+- If no changes are necessary, output "No changes necessary."
 `;
 
 function buildUserMessage(context: NesContext): string {
