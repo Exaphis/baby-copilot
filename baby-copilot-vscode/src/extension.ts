@@ -150,9 +150,42 @@ async function requestSuggestions(
   );
 
   if (nesEdit) {
+    // If the model's edit is purely additive at the cursor, prefer inline suggestion
+    const additionText = nesUtils.computeInlineAddition(
+      {
+        doc: document,
+        diffTrajectory: [],
+        cursor: position,
+        editableRange: rangeForSnippet,
+      },
+      nesEdit.content
+    );
+    if (additionText) {
+      nesUtils.updateInlineSuggestion({
+        uri: document.uri,
+        position,
+        text: additionText,
+      });
+      try {
+        await vscode.commands.executeCommand(
+          "editor.action.inlineSuggest.trigger"
+        );
+      } catch {
+        // ignore if unavailable
+      }
+      lastNesSuggestion = null;
+      // Skip overlay diff path for inline-only case
+      return {
+        nesResult: null,
+        cmsResult: null,
+      };
+    }
+    // Not inline-only, clear any inline state and proceed to overlay rendering
+    nesUtils.updateInlineSuggestion(null);
     lastNesSuggestion = { suggestion: nesEdit, range: rangeForSnippet };
   } else {
     lastNesSuggestion = null;
+    nesUtils.updateInlineSuggestion(null);
   }
 
   async function getNesResult(): Promise<NesSuggestionResult | null> {
@@ -249,6 +282,8 @@ async function requestSuggestions(
 // Your extension is activated the very first time the command is executed
 export async function activate(context: vscode.ExtensionContext) {
   extContext = context;
+  // Initialize inline completion support for addition-only edits
+  nesUtils.initInlineCompletionProvider(context);
 
   const cr = CodeRenderer.getInstance();
   await cr.setTheme("dark-plus");
@@ -284,6 +319,25 @@ export async function activate(context: vscode.ExtensionContext) {
   const acceptSuggestionCommand = vscode.commands.registerCommand(
     "baby-copilot.acceptSuggestion",
     async () => {
+      // First try to commit any inline suggestion only if one is active at cursor
+      const inline = nesUtils.getInlineSuggestionState();
+      const activeEditor = vscode.window.activeTextEditor;
+      if (
+        inline &&
+        activeEditor &&
+        activeEditor.document.uri.toString() === inline.uri.toString() &&
+        activeEditor.selection.active.isEqual(inline.position)
+      ) {
+        try {
+          await vscode.commands.executeCommand(
+            "editor.action.inlineSuggest.commit"
+          );
+          nesUtils.updateInlineSuggestion(null);
+          return;
+        } catch {
+          // fall through to overlay accept if commit is unavailable
+        }
+      }
       if (lastNesSuggestion && vscode.window.activeTextEditor) {
         const editor = vscode.window.activeTextEditor;
         editor.edit((editBuilder) => {
@@ -322,6 +376,12 @@ export async function activate(context: vscode.ExtensionContext) {
       nesDecorationType = null;
       cmsDecorationType = null;
       lastNesSuggestion = null;
+      nesUtils.updateInlineSuggestion(null);
+      try {
+        await vscode.commands.executeCommand("editor.action.inlineSuggest.hide");
+      } catch {
+        // ignore if inline suggest not available
+      }
       console.log("cleared hasSuggestion via cancel");
       await vscode.commands.executeCommand(
         "setContext",

@@ -16,6 +16,88 @@ export interface NesSuggestion {
   content: string; // new contents of the editable range
 }
 
+// Inline completion support
+let inlineSuggestionState:
+  | { uri: vscode.Uri; position: vscode.Position; text: string }
+  | null = null;
+let inlineProviderRegistration: vscode.Disposable | null = null;
+
+export function initInlineCompletionProvider(
+  context: vscode.ExtensionContext
+) {
+  if (inlineProviderRegistration) {
+    return; // already registered
+  }
+  inlineProviderRegistration = vscode.languages.registerInlineCompletionItemProvider(
+    { pattern: "**" },
+    {
+      provideInlineCompletionItems(doc, pos) {
+        if (
+          inlineSuggestionState &&
+          doc.uri.toString() === inlineSuggestionState.uri.toString() &&
+          pos.isEqual(inlineSuggestionState.position) &&
+          inlineSuggestionState.text.length > 0
+        ) {
+          const item = new vscode.InlineCompletionItem(
+            inlineSuggestionState.text,
+            new vscode.Range(pos, pos)
+          );
+          return { items: [item] };
+        }
+        return { items: [] };
+      },
+    }
+  );
+  context.subscriptions.push(inlineProviderRegistration);
+}
+
+export function updateInlineSuggestion(
+  state:
+    | { uri: vscode.Uri; position: vscode.Position; text: string }
+    | null
+) {
+  inlineSuggestionState = state;
+}
+
+export function getInlineSuggestionState():
+  | { uri: vscode.Uri; position: vscode.Position; text: string }
+  | null {
+  return inlineSuggestionState;
+}
+
+// Compute whether proposed content is the same as current editable content
+// with only an insertion at the user's cursor. If so, return the inserted text.
+export function computeInlineAddition(
+  context: NesContext,
+  proposed: string
+): string | null {
+  const doc = context.doc;
+  const current = doc.getText(context.editableRange);
+
+  // Split current by cursor
+  const cursorOffset =
+    doc.offsetAt(context.cursor) - doc.offsetAt(context.editableRange.start);
+  if (cursorOffset < 0 || cursorOffset > current.length) {
+    return null;
+  }
+  const before = current.slice(0, cursorOffset);
+  const after = current.slice(cursorOffset);
+
+  // Proposed must contain before and after in order with only extra text between
+  if (!proposed.startsWith(before)) {
+    return null;
+  }
+  if (!proposed.endsWith(after)) {
+    return null;
+  }
+  const inserted = proposed.slice(before.length, proposed.length - after.length);
+  // If proposed is identical (no insertion), treat as no-op
+  if (inserted.length === 0) {
+    return null;
+  }
+  return inserted;
+}
+
 export async function requestEdit(
   context: NesContext,
   token: vscode.CancellationToken
