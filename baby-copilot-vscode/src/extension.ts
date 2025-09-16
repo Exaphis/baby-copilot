@@ -60,6 +60,38 @@ function scheduleSuggestionsDebounced(delayMs = 250) {
   }, delayMs);
 }
 
+function clearSuggestionUIImmediate() {
+  // Cancel any in-flight request (do not dispose the token source here; just cancel)
+  suggestCts?.cancel();
+
+  // Dispose current decorations
+  nesDecorationType?.dispose();
+  cmsDecorationType?.dispose();
+  nesDecorationType = null;
+  cmsDecorationType = null;
+  lastNesSuggestion = null;
+
+  // Clear inline state and hide if available
+  nesUtils.updateInlineSuggestion(null);
+  try {
+    void vscode.commands.executeCommand("editor.action.inlineSuggest.hide");
+  } catch {
+    // ignore if unavailable
+  }
+
+  // Reset contexts
+  void vscode.commands.executeCommand(
+    "setContext",
+    "baby-copilot.hasSuggestion",
+    false
+  );
+  void vscode.commands.executeCommand(
+    "setContext",
+    "inlineEditIsVisible",
+    false
+  );
+}
+
 async function triggerSuggestions() {
   // Cancel any in-flight request
   suggestCts?.cancel();
@@ -422,10 +454,14 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   vscode.window.onDidChangeTextEditorSelection(async (event) => {
+    // Immediately remove any existing suggestion UI on cursor move
+    clearSuggestionUIImmediate();
     scheduleSuggestionsDebounced();
   });
 
   vscode.window.onDidChangeActiveTextEditor(async (editor) => {
+    // Clear any previous editor's suggestion immediately
+    clearSuggestionUIImmediate();
     scheduleSuggestionsDebounced();
   });
 
