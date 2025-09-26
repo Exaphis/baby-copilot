@@ -4,7 +4,7 @@ A tiny version of GitHub Copilot.
 
 ## Monorepo Layout
 
-- `packages/code-renderer`: Shared code highlighting -> SVG renderer (uses `shiki`).
+- `core/code-renderer`: Shared code highlighting -> SVG renderer (uses `shiki`).
 - `baby-copilot-vscode`: VS Code extension that consumes the renderer package.
 - `demo-site`: Express-based demo site showing multiple diff panes with live reload.
 

@@ -2,11 +2,11 @@
   "name": "baby-copilot-monorepo",
   "private": true,
   "workspaces": [
-    "packages/*",
+    "core/*",
     "baby-copilot-vscode"
   ],
   "scripts": {
-    "build": "pnpm -r --filter ./packages/... --filter ./baby-copilot-vscode build",
+    "build": "pnpm -r --filter ./core/... --filter ./baby-copilot-vscode build",
     "build:all": "pnpm -r build",
     "demo": "pnpm --filter @baby-copilot/code-renderer build && pnpm --filter ./demo-site run serve"
   }

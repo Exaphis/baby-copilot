@@ -12,7 +12,7 @@ importers:
     dependencies:
       '@baby-copilot/code-renderer':
         specifier: workspace:*
-        version: link:../packages/code-renderer
+        version: link:../core/code-renderer
       '@types/diff':
         specifier: ^8.0.0
         version: 8.0.0
@@ -67,7 +67,7 @@ importers:
     dependencies:
       '@baby-copilot/code-renderer':
         specifier: workspace:*
-        version: link:../packages/code-renderer
+        version: link:../core/code-renderer
       chokidar:
         specifier: ^3.6.0
         version: 3.6.0
@@ -88,7 +88,7 @@ importers:
         specifier: ^5.8.3
         version: 5.9.2
 
-  packages/code-renderer:
+  core/code-renderer:
     dependencies:
       diff-match-patch:
         specifier: ^1.0.5
