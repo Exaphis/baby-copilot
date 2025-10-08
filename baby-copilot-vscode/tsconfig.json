@@ -9,7 +9,7 @@
 		],
 		"baseUrl": ".",
 		"paths": {
-			"@baby-copilot/code-renderer": ["../core/code-renderer/src/index.ts"]
+			"@baby-copilot/code-renderer": ["../core/src/index.ts"]
 		},
 		"sourceMap": true,
 		"rootDir": "src",
@@ -22,6 +22,6 @@
 	}
 ,
 	"references": [
-		{ "path": "../core/code-renderer" }
+		{ "path": "../core" }
 	]
 }

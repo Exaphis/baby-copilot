@@ -12,7 +12,7 @@ importers:
     dependencies:
       '@baby-copilot/code-renderer':
         specifier: workspace:*
-        version: link:../core/code-renderer
+        version: link:../core
       '@types/diff':
         specifier: ^8.0.0
         version: 8.0.0
@@ -63,11 +63,30 @@ importers:
         specifier: ^5.8.3
         version: 5.9.2
 
+  core:
+    dependencies:
+      diff-match-patch:
+        specifier: ^1.0.5
+        version: 1.0.5
+      shiki:
+        specifier: ^3.7.0
+        version: 3.12.2
+    devDependencies:
+      '@types/diff-match-patch':
+        specifier: ^1.0.36
+        version: 1.0.36
+      '@types/node':
+        specifier: 20.x
+        version: 20.19.13
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.2
+
   demo-site:
     dependencies:
       '@baby-copilot/code-renderer':
         specifier: workspace:*
-        version: link:../core/code-renderer
+        version: link:../core
       chokidar:
         specifier: ^3.6.0
         version: 3.6.0
@@ -84,25 +103,6 @@ importers:
       nodemon:
         specifier: ^3.1.4
         version: 3.1.10
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.2
-
-  core/code-renderer:
-    dependencies:
-      diff-match-patch:
-        specifier: ^1.0.5
-        version: 1.0.5
-      shiki:
-        specifier: ^3.7.0
-        version: 3.12.2
-    devDependencies:
-      '@types/diff-match-patch':
-        specifier: ^1.0.36
-        version: 1.0.36
-      '@types/node':
-        specifier: 20.x
-        version: 20.19.13
       typescript:
         specifier: ^5.8.3
         version: 5.9.2
