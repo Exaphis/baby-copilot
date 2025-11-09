@@ -17,51 +17,52 @@ export interface NesSuggestion {
 }
 
 // Inline completion support
-let inlineSuggestionState:
-  | { uri: vscode.Uri; position: vscode.Position; text: string }
-  | null = null;
+let inlineSuggestionState: {
+  uri: vscode.Uri;
+  position: vscode.Position;
+  text: string;
+} | null = null;
 let inlineProviderRegistration: vscode.Disposable | null = null;
 
-export function initInlineCompletionProvider(
-  context: vscode.ExtensionContext
-) {
+export function initInlineCompletionProvider(context: vscode.ExtensionContext) {
   if (inlineProviderRegistration) {
     return; // already registered
   }
-  inlineProviderRegistration = vscode.languages.registerInlineCompletionItemProvider(
-    { pattern: "**" },
-    {
-      provideInlineCompletionItems(doc, pos) {
-        if (
-          inlineSuggestionState &&
-          doc.uri.toString() === inlineSuggestionState.uri.toString() &&
-          pos.isEqual(inlineSuggestionState.position) &&
-          inlineSuggestionState.text.length > 0
-        ) {
-          const item = new vscode.InlineCompletionItem(
-            inlineSuggestionState.text,
-            new vscode.Range(pos, pos)
-          );
-          return { items: [item] };
-        }
-        return { items: [] };
-      },
-    }
-  );
+  inlineProviderRegistration =
+    vscode.languages.registerInlineCompletionItemProvider(
+      { pattern: "**" },
+      {
+        provideInlineCompletionItems(doc, pos) {
+          if (
+            inlineSuggestionState &&
+            doc.uri.toString() === inlineSuggestionState.uri.toString() &&
+            pos.isEqual(inlineSuggestionState.position) &&
+            inlineSuggestionState.text.length > 0
+          ) {
+            const item = new vscode.InlineCompletionItem(
+              inlineSuggestionState.text,
+              new vscode.Range(pos, pos)
+            );
+            return { items: [item] };
+          }
+          return { items: [] };
+        },
+      }
+    );
   context.subscriptions.push(inlineProviderRegistration);
 }
 
 export function updateInlineSuggestion(
-  state:
-    | { uri: vscode.Uri; position: vscode.Position; text: string }
-    | null
+  state: { uri: vscode.Uri; position: vscode.Position; text: string } | null
 ) {
   inlineSuggestionState = state;
 }
 
-export function getInlineSuggestionState():
-  | { uri: vscode.Uri; position: vscode.Position; text: string }
-  | null {
+export function getInlineSuggestionState(): {
+  uri: vscode.Uri;
+  position: vscode.Position;
+  text: string;
+} | null {
   return inlineSuggestionState;
 }
 
@@ -90,7 +91,10 @@ export function computeInlineAddition(
   if (!proposed.endsWith(after)) {
     return null;
   }
-  const inserted = proposed.slice(before.length, proposed.length - after.length);
+  const inserted = proposed.slice(
+    before.length,
+    proposed.length - after.length
+  );
   // If proposed is identical (no insertion), treat as no-op
   if (inserted.length === 0) {
     return null;
@@ -102,6 +106,11 @@ export async function requestEdit(
   context: NesContext,
   token: vscode.CancellationToken
 ): Promise<NesSuggestion | null> {
+  return {
+    content: "foobar is foo and bar",
+  };
+
+  /**
   try {
     if (token.isCancellationRequested) {
       return null;
@@ -202,6 +211,7 @@ export async function requestEdit(
     console.error("requestEdit failed:", err);
     return null;
   }
+  */
 }
 
 const SYSTEM_PROMPT = `You are Instinct, an intelligent next-edit predictor. Your role as an AI agent is to help developers complete their code tasks by predicting the next edit that they will make within the section of code marked by <|editable_region_start|> and <|editable_region_end|> tags.

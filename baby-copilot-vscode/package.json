@@ -16,8 +16,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "baby-copilot.helloWorld",
-        "title": "Hello World"
+        "command": "baby-copilot.triggerSuggestion",
+        "title": "Trigger suggestion"
       },
       {
         "command": "baby-copilot.viewLogs",
@@ -33,6 +33,11 @@
       }
     ],
     "keybindings": [
+      {
+        "command": "baby-copilot.triggerSuggestion",
+        "key": "alt+\\",
+        "when": "editorTextFocus"
+      },
       {
         "command": "baby-copilot.acceptSuggestion",
         "key": "Tab",
@@ -71,8 +76,7 @@
   "dependencies": {
     "@types/diff": "^8.0.0",
     "diff": "^8.0.2",
-    "diff-match-patch": "^1.0.5",
     "jsdom": "^26.1.0",
-    "@baby-copilot/code-renderer": "workspace:*"
+    "@baby-copilot/core": "workspace:*"
   }
 }

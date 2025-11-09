@@ -1,14 +1,10 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { CodeRenderer } from "@baby-copilot/code-renderer";
+import { DiffRange, SvgCodeRenderer, dmpDiff } from "@baby-copilot/core";
 import * as nesUtils from "./nesUtils.js";
 
 let extContext: vscode.ExtensionContext;
-let lastNesSuggestion: {
-  suggestion: nesUtils.NesSuggestion;
-  range: vscode.Range;
-} | null = null;
 
 function getEffectiveLineHeight(cfg: vscode.WorkspaceConfiguration): number {
   const lineHeight = cfg.get<number>("lineHeight") || 0;
@@ -27,288 +23,269 @@ function getEffectiveLineHeight(cfg: vscode.WorkspaceConfiguration): number {
 }
 
 // Next edit suggestion
-let nesDecorationType: vscode.TextEditorDecorationType | null = null;
-// Cursor movement suggestion
-let cmsDecorationType: vscode.TextEditorDecorationType | null = null;
+const INLINE_REMOVE_DECORATION_TYPE =
+  vscode.window.createTextEditorDecorationType({
+    backgroundColor: new vscode.ThemeColor("diffEditor.removedTextBackground"),
+    borderColor: new vscode.ThemeColor("diffEditor.removedTextBorder"),
+  });
 
-interface NesSuggestionResult {
-  nesDecorationType: vscode.TextEditorDecorationType;
-  range: vscode.Range;
-}
+class NesHandler {
+  editor: vscode.TextEditor;
+  cts: vscode.CancellationTokenSource;
+  diffData: {
+    customDecorationTypes: vscode.TextEditorDecorationType[];
+    range: vscode.Range;
+    newContent: string;
+  } | null = null;
 
-interface CmsSuggestionResult {
-  cmsDecorationType: vscode.TextEditorDecorationType;
-  range: vscode.Range;
-}
-
-interface SuggestionResult {
-  nesResult: NesSuggestionResult | null;
-  cmsResult: CmsSuggestionResult | null;
-}
-
-let suggestCts: vscode.CancellationTokenSource | null = null;
-let suggestDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-function scheduleSuggestionsDebounced(delayMs = 250) {
-  if (suggestDebounceTimer) {
-    clearTimeout(suggestDebounceTimer);
+  // TODO: destruct?
+  constructor(editor: vscode.TextEditor) {
+    this.editor = editor;
+    this.cts = new vscode.CancellationTokenSource();
   }
-  suggestDebounceTimer = setTimeout(() => {
-    triggerSuggestions().catch((e) =>
-      console.error("triggerSuggestions error:", e)
+
+  async trigger() {
+    // Remove existing diff data
+    this.diffData?.customDecorationTypes.forEach((x) => x.dispose());
+    this.editor.setDecorations(INLINE_REMOVE_DECORATION_TYPE, []);
+    this.diffData = null;
+
+    const document = this.editor.document;
+    const position = this.editor.selection.active;
+    // pass a URI so VS Code can apply folder- or language-specific
+    // overrides when they exist
+    const uri = this.editor.document.uri;
+    const editorCfg = vscode.workspace.getConfiguration("editor", uri);
+
+    const fontFamily = editorCfg.get<string>("fontFamily") || " monospace";
+    const fontSize = editorCfg.get<number>("fontSize") || 14;
+    const tabSize =
+      typeof this.editor.options.tabSize === "number"
+        ? this.editor.options.tabSize
+        : editorCfg.get<number>("tabSize", 4);
+    const lineHeight = getEffectiveLineHeight(editorCfg);
+
+    const rangeForSnippet = document.validateRange(
+      new vscode.Range(
+        Math.max(position.line - 10, 0),
+        0,
+        position.line + 10,
+        0
+      )
     );
-  }, delayMs);
-}
 
-function clearSuggestionUIImmediate() {
-  // Cancel any in-flight request (do not dispose the token source here; just cancel)
-  suggestCts?.cancel();
-
-  // Dispose current decorations
-  nesDecorationType?.dispose();
-  cmsDecorationType?.dispose();
-  nesDecorationType = null;
-  cmsDecorationType = null;
-  lastNesSuggestion = null;
-
-  // Clear inline state and hide if available
-  nesUtils.updateInlineSuggestion(null);
-  try {
-    void vscode.commands.executeCommand("editor.action.inlineSuggest.hide");
-  } catch {
-    // ignore if unavailable
-  }
-
-  // Reset contexts
-  void vscode.commands.executeCommand(
-    "setContext",
-    "baby-copilot.hasSuggestion",
-    false
-  );
-  void vscode.commands.executeCommand(
-    "setContext",
-    "inlineEditIsVisible",
-    false
-  );
-}
-
-async function triggerSuggestions() {
-  // Cancel any in-flight request
-  suggestCts?.cancel();
-  suggestCts?.dispose();
-
-  nesDecorationType?.dispose();
-  cmsDecorationType?.dispose();
-  console.log("cleared hasSuggestion");
-  vscode.commands.executeCommand(
-    "setContext",
-    "baby-copilot.hasSuggestion",
-    false
-  );
-
-  const localCts = new vscode.CancellationTokenSource();
-  suggestCts = localCts;
-  const result = await requestSuggestions(localCts.token);
-  if (!result || localCts.token.isCancellationRequested) {
-    return;
-  }
-
-  const { nesResult, cmsResult } = result;
-  if (nesResult) {
-    nesDecorationType = nesResult.nesDecorationType;
-    const activeEditor = vscode.window.activeTextEditor;
-    if (activeEditor) {
-      activeEditor.setDecorations(nesDecorationType, [nesResult.range]);
-      console.log("SET hasSuggestion");
-      vscode.commands.executeCommand(
-        "setContext",
-        "baby-copilot.hasSuggestion",
-        true
-      );
-      vscode.commands.executeCommand("setContext", "inlineEditIsVisible", true);
-    }
-  }
-
-  if (cmsResult) {
-    cmsDecorationType = cmsResult.cmsDecorationType;
-    const activeEditor = vscode.window.activeTextEditor;
-    if (activeEditor) {
-      const cursorDecorations: vscode.DecorationOptions[] = [];
-      cursorDecorations.push({ range: cmsResult.range });
-      activeEditor.setDecorations(cmsDecorationType, cursorDecorations);
-    }
-  }
-}
-
-async function requestSuggestions(
-  token: vscode.CancellationToken
-): Promise<SuggestionResult | null> {
-  if (token.isCancellationRequested) {
-    return null;
-  }
-
-  let activeEditor = vscode.window.activeTextEditor;
-  if (activeEditor === undefined || token.isCancellationRequested) {
-    return null;
-  }
-
-  const document = activeEditor.document;
-  const position = activeEditor.selection.active;
-
-  const uri = vscode.window.activeTextEditor?.document.uri; // pass a URI so VS Code can
-  // apply folder- or language-specific
-  // overrides when they exist
-  const editorCfg = vscode.workspace.getConfiguration("editor", uri);
-
-  const fontFamily = editorCfg.get<string>("fontFamily") || " monospace";
-  const fontSize = editorCfg.get<number>("fontSize") || 14;
-  const lineHeight = getEffectiveLineHeight(editorCfg);
-
-  const rangeForSnippet = document.validateRange(
-    new vscode.Range(Math.max(position.line - 10, 0), 0, position.line + 10, 0)
-  );
-
-  // Next Edit Suggestions
-  const language = document.languageId;
-  const snippet = document.getText(rangeForSnippet);
-  const nesEdit = await nesUtils.requestEdit(
-    {
-      doc: document,
-      diffTrajectory: [],
-      cursor: position,
-      editableRange: rangeForSnippet,
-    },
-    token
-  );
-
-  if (nesEdit) {
-    // If the model's edit is purely additive at the cursor, prefer inline suggestion
-    const additionText = nesUtils.computeInlineAddition(
+    const language = document.languageId;
+    const snippet = document.getText(rangeForSnippet);
+    const nesEdit = await nesUtils.requestEdit(
       {
         doc: document,
         diffTrajectory: [],
         cursor: position,
         editableRange: rangeForSnippet,
       },
-      nesEdit.content
+      this.cts.token
     );
-    if (additionText) {
-      nesUtils.updateInlineSuggestion({
-        uri: document.uri,
-        position,
-        text: additionText,
-      });
-      try {
-        await vscode.commands.executeCommand(
-          "editor.action.inlineSuggest.trigger"
-        );
-      } catch {
-        // ignore if unavailable
-      }
-      lastNesSuggestion = null;
-      // Skip overlay diff path for inline-only case
-      return {
-        nesResult: null,
-        cmsResult: null,
-      };
-    }
-    // Not inline-only, clear any inline state and proceed to overlay rendering
-    nesUtils.updateInlineSuggestion(null);
-    lastNesSuggestion = { suggestion: nesEdit, range: rangeForSnippet };
-  } else {
-    lastNesSuggestion = null;
-    nesUtils.updateInlineSuggestion(null);
-  }
 
-  async function getNesResult(): Promise<NesSuggestionResult | null> {
     if (nesEdit === null) {
-      return null;
+      return;
     }
 
-    const cr = CodeRenderer.getInstance();
-    const { content: finalContent } = cr.computeDiff(snippet, nesEdit.content);
-    const finalContentLines = finalContent.split(/\r\n|\r|\n/);
-    const numLines = finalContentLines.length;
+    // --- Render ---
+    const diff = dmpDiff(snippet, nesEdit.content);
 
-    // TODO: this rendering still has some issues.
-    // For example:
-    // left:     right:
-    // fooba     foobar
-    //           test
-    // test
-    //
-    // This doesn't show the removal of the newline properly.
-    const nesDimensions = { width: 240, height: numLines * lineHeight };
-    // Use built-in diff rendering
-    const svgData = await cr.getDiffDataUri(
-      snippet,
-      nesEdit.content,
-      language,
-      {
-        imageType: "svg",
-        fontFamily,
-        fontSize,
-        lineHeight,
-        dimensions: nesDimensions,
+    function updateRanges(ranges: DiffRange[]): vscode.Range[] {
+      return ranges.map(
+        (dr) =>
+          new vscode.Range(
+            new vscode.Position(
+              dr.start.line + rangeForSnippet.start.line,
+              dr.start.character
+            ),
+            new vscode.Position(
+              dr.end.line + rangeForSnippet.start.line,
+              dr.end.character
+            )
+          )
+      );
+    }
+
+    let customDecorationTypes = [];
+    if (diff.left.length === 0 && diff.right.length === 0) {
+      // Base case: nothing
+    } else if (diff.left.length > 0 && diff.right.length === 0) {
+      // Case 1: all deletions
+      this.editor.setDecorations(
+        INLINE_REMOVE_DECORATION_TYPE,
+        updateRanges(diff.left)
+      );
+    } else if (diff.left.length === 0 && diff.right.length > 0) {
+      // Case 2: all additions
+      function getTextInRange(text: string, range: DiffRange): string {
+        const lines = text.split(/\r\n|\r|\n/);
+
+        // Single line range
+        if (range.start.line === range.end.line) {
+          return lines[range.start.line].substring(
+            range.start.character,
+            range.end.character
+          );
+        }
+
+        // Multi-line range
+        const result: string[] = [];
+
+        // First line (from start.character to end of line)
+        result.push(lines[range.start.line].substring(range.start.character));
+
+        // Middle lines (full lines)
+        for (let i = range.start.line + 1; i < range.end.line; i++) {
+          result.push(lines[i]);
+        }
+
+        // Last line (from start of line to end.character)
+        result.push(lines[range.end.line].substring(0, range.end.character));
+
+        return result.join("\n");
       }
-    );
 
-    const newNesDecorationType = vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
-      before: {
-        width: `${nesDimensions.width}px`,
-        height: `${nesDimensions.height}px`,
-        textDecoration:
-          "; position: absolute; margin-left: 30ch; z-index: 1000;",
-        contentIconPath: vscode.Uri.parse(svgData),
-      },
-    });
+      const updatedRanges = updateRanges(diff.right);
+      let lineOffset = 0;
+      let charOffset = 0;
+      for (let i = 0; i < diff.right.length; i++) {
+        const ghostPosition = new vscode.Position(
+          updatedRanges[i].start.line - lineOffset,
+          updatedRanges[i].start.character - charOffset
+        );
+        const ghostText = getTextInRange(nesEdit.content, diff.right[i]);
+        console.log(diff.right[i], ghostPosition, ghostText);
+        const ghostTextDecorationType =
+          vscode.window.createTextEditorDecorationType({
+            after: {
+              contentText: getTextInRange(nesEdit.content, diff.right[i]),
+              color: new vscode.ThemeColor("editorGhostText.foreground"),
+              backgroundColor: new vscode.ThemeColor(
+                "editorGhostText.background"
+              ),
+              borderColor: new vscode.ThemeColor("editorGhostText.border"),
+            },
+          });
+        this.editor.setDecorations(ghostTextDecorationType, [
+          new vscode.Range(ghostPosition, ghostPosition),
+        ]);
+        // we need to offset the next suggestion by the number of lines/characters
+        // the ghost text takes up
+        lineOffset += updatedRanges[i].end.line - updatedRanges[i].start.line;
+        charOffset =
+          updatedRanges[i].end.character -
+          (updatedRanges[i].isSingleLine
+            ? updatedRanges[i].start.character
+            : 0);
+        customDecorationTypes.push(ghostTextDecorationType);
+      }
+    } else if (diff.left.length > 0 && diff.right.length > 0) {
+      // Case 3: mixed
+      // We render removals inline, and additions in the overlay
+      this.editor.setDecorations(
+        INLINE_REMOVE_DECORATION_TYPE,
+        updateRanges(diff.left)
+      );
 
-    return {
-      nesDecorationType: newNesDecorationType,
+      const cr = SvgCodeRenderer.getInstance();
+      const lines = nesEdit.content.split(/\r\n|\r|\n/);
+      const numLines = lines.length;
+
+      // Determine width based on longest line length.
+      // We do this instead of using overflow: hidden because for unknown reasons
+      // it cuts off long lines at the start instead of at the end sometimes?
+      // e.g., a long comment will get cut off completely
+      const maxSuggestedWidth = lines.reduce((max, l) => {
+        const visual = l.replace(/\t/g, " ".repeat(tabSize));
+        return Math.max(max, visual.length);
+      }, 0);
+      const maxExistingWidth = snippet.split(/\r\n|\r|\n/).reduce((max, l) => {
+        const visual = l.replace(/\t/g, " ".repeat(tabSize));
+        return Math.max(max, visual.length);
+      }, 0);
+
+      const nesDimensions = {
+        // fontSize is not the width, but should be safe because it is larger
+        width: maxSuggestedWidth * fontSize,
+        height: numLines * lineHeight,
+      };
+
+      // Use built-in diff rendering
+      const svgData = await cr.getDataUri(
+        nesEdit.content,
+        language,
+        {
+          imageType: "svg",
+          fontFamily,
+          fontSize,
+          lineHeight,
+          dimensions: nesDimensions,
+        },
+        diff.right
+      );
+
+      const diffSvgDecorationType =
+        vscode.window.createTextEditorDecorationType({
+          isWholeLine: true,
+          rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
+          before: {
+            width: `${nesDimensions.width}px`,
+            height: `${nesDimensions.height}px`,
+            textDecoration: `; position: absolute; margin-left: ${
+              maxExistingWidth + 5
+            }ch; z-index: 1000;`,
+            contentIconPath: vscode.Uri.parse(svgData),
+          },
+        });
+      this.editor.setDecorations(diffSvgDecorationType, [rangeForSnippet]);
+      customDecorationTypes.push(diffSvgDecorationType);
+    }
+
+    this.diffData = {
+      customDecorationTypes: customDecorationTypes,
       range: rangeForSnippet,
+      newContent: nesEdit.content,
     };
+
+    // Set context to enable Tab/Escape keybindings
+    vscode.commands.executeCommand(
+      "setContext",
+      "baby-copilot.hasSuggestion",
+      true
+    );
   }
 
-  async function getCmsResult(): Promise<CmsSuggestionResult | null> {
-    // cursor movement
-    const cmsSvgPath = path.join(
-      extContext.extensionPath,
-      "src",
-      "cursorSuggestion.svg"
-    );
-    const cmsSvgData = fs.readFileSync(cmsSvgPath, "utf8");
-    const contentIconBase64 =
-      "data:image/svg+xml;base64," + Buffer.from(cmsSvgData).toString("base64");
+  reset() {
+    this.diffData?.customDecorationTypes.forEach((x) => x.dispose());
+    this.diffData = null;
+    this.editor.setDecorations(INLINE_REMOVE_DECORATION_TYPE, []);
 
-    const newCmsDecorationType = vscode.window.createTextEditorDecorationType({
-      rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
-      after: {
-        // TODO: it doesn't show up if we don't set aspect-ratio... why?
-        textDecoration: `; position: absolute; z-index: 1000; height: ${lineHeight}px; aspect-ratio: 220.86 / 43.92;`,
-        contentIconPath: vscode.Uri.parse(contentIconBase64),
-      },
+    // Clear context to disable Tab/Escape keybindings
+    vscode.commands.executeCommand(
+      "setContext",
+      "baby-copilot.hasSuggestion",
+      false
+    );
+  }
+
+  accept() {
+    if (!this.diffData) {
+      return;
+    }
+
+    this.editor.edit((editBuilder) => {
+      editBuilder.replace(this.diffData!.range, this.diffData!.newContent);
     });
-    const cursorRange = new vscode.Range(
-      position.line + 1,
-      0,
-      position.line + 1,
-      0
-    );
 
-    return {
-      cmsDecorationType: newCmsDecorationType,
-      range: cursorRange,
-    };
+    // Clear the suggestion after accepting
+    this.reset();
   }
-
-  return {
-    nesResult: await getNesResult(),
-    // cmsResult: await getCmsResult(),
-    cmsResult: null,
-  };
 }
+
+const handlers = new WeakMap<vscode.TextEditor, NesHandler>();
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -317,20 +294,28 @@ export async function activate(context: vscode.ExtensionContext) {
   // Initialize inline completion support for addition-only edits
   nesUtils.initInlineCompletionProvider(context);
 
-  const cr = CodeRenderer.getInstance();
+  const cr = SvgCodeRenderer.getInstance();
   await cr.setTheme("dark-plus");
 
   console.log('Congratulations, your extension "baby-copilot" is now active!');
 
-  // The command has been defined in the package.json file
-  // Now provide the implementation of the command with registerCommand
-  // The commandId parameter must match the command field in package.json
   const disposable = vscode.commands.registerCommand(
-    "baby-copilot.helloWorld",
-    () => {
-      // The code you place here will be executed every time your command is executed
-      // Display a message box to the user
-      vscode.window.showInformationMessage("Hello World from Baby Copilot!");
+    "baby-copilot.triggerSuggestion",
+    async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        return;
+      }
+
+      if (!handlers.has(editor)) {
+        handlers.set(editor, new NesHandler(editor));
+      }
+      const handler = handlers.get(editor)!;
+      await handler.trigger();
+
+      vscode.window.showInformationMessage(
+        "baby-copilot: Triggered suggestion"
+      );
     }
   );
 
@@ -351,121 +336,58 @@ export async function activate(context: vscode.ExtensionContext) {
   const acceptSuggestionCommand = vscode.commands.registerCommand(
     "baby-copilot.acceptSuggestion",
     async () => {
-      // First try to commit any inline suggestion only if one is active at cursor
-      const inline = nesUtils.getInlineSuggestionState();
-      const activeEditor = vscode.window.activeTextEditor;
-      if (
-        inline &&
-        activeEditor &&
-        activeEditor.document.uri.toString() === inline.uri.toString() &&
-        activeEditor.selection.active.isEqual(inline.position)
-      ) {
-        try {
-          await vscode.commands.executeCommand(
-            "editor.action.inlineSuggest.commit"
-          );
-          nesUtils.updateInlineSuggestion(null);
-          return;
-        } catch {
-          // fall through to overlay accept if commit is unavailable
-        }
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        return;
       }
-      if (lastNesSuggestion && vscode.window.activeTextEditor) {
-        const editor = vscode.window.activeTextEditor;
-        editor.edit((editBuilder) => {
-          editBuilder.replace(
-            lastNesSuggestion!.range,
-            lastNesSuggestion!.suggestion.content
-          );
-        });
-        // Clear suggestion
-        nesDecorationType?.dispose();
-        cmsDecorationType?.dispose();
-        lastNesSuggestion = null;
-        console.log("cleared hasSuggestion");
-        vscode.commands.executeCommand(
-          "setContext",
-          "baby-copilot.hasSuggestion",
-          false
-        );
 
-        scheduleSuggestionsDebounced();
-      }
+      handlers.get(editor)?.accept();
     }
   );
 
   const cancelSuggestionCommand = vscode.commands.registerCommand(
     "baby-copilot.cancelSuggestion",
     async () => {
-      // Cancel any in-flight suggestion request
-      suggestCts?.cancel();
-      suggestCts?.dispose();
-      suggestCts = null;
-
-      // Dispose current decorations and clear state
-      nesDecorationType?.dispose();
-      cmsDecorationType?.dispose();
-      nesDecorationType = null;
-      cmsDecorationType = null;
-      lastNesSuggestion = null;
-      nesUtils.updateInlineSuggestion(null);
-      try {
-        await vscode.commands.executeCommand("editor.action.inlineSuggest.hide");
-      } catch {
-        // ignore if inline suggest not available
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        return;
       }
-      console.log("cleared hasSuggestion via cancel");
-      await vscode.commands.executeCommand(
-        "setContext",
-        "baby-copilot.hasSuggestion",
-        false
-      );
-      await vscode.commands.executeCommand(
-        "setContext",
-        "inlineEditIsVisible",
-        false
-      );
 
-      // Best-effort pass-through to common Escape handlers (e.g., VSCodeVim/Neovim)
-      const maybeExecute = async (cmd: string) => {
-        try {
-          await vscode.commands.executeCommand(cmd);
-        } catch {
-          // ignore if command is not available
-        }
-      };
-
-      // If VSCodeVim is installed, invoke its escape
-      if (vscode.extensions.getExtension("vscodevim.vim")) {
-        await maybeExecute("extension.vim_escape");
-      }
-      // If VSCode Neovim is installed, invoke its escape
-      if (vscode.extensions.getExtension("asvetliakov.vscode-neovim")) {
-        await maybeExecute("vscode-neovim.escape");
-      }
+      handlers.get(editor)?.reset();
     }
   );
+
+  // Auto-cancel suggestions on document changes
+  const onDocumentChange = vscode.workspace.onDidChangeTextDocument((event) => {
+    const editor = vscode.window.activeTextEditor;
+    if (editor && event.document === editor.document) {
+      handlers.get(editor)?.reset();
+    }
+  });
+
+  // Auto-cancel suggestions on cursor movement
+  const onSelectionChange = vscode.window.onDidChangeTextEditorSelection(
+    (event) => {
+      handlers.get(event.textEditor)?.reset();
+    }
+  );
+
+  // Auto-cancel suggestions on tab switch
+  const onEditorChange = vscode.window.onDidChangeActiveTextEditor((editor) => {
+    if (editor) {
+      handlers.get(editor)?.reset();
+    }
+  });
 
   context.subscriptions.push(
     disposable,
     viewLogsCommand,
     acceptSuggestionCommand,
-    cancelSuggestionCommand
+    cancelSuggestionCommand,
+    onDocumentChange,
+    onSelectionChange,
+    onEditorChange
   );
-
-  vscode.window.onDidChangeTextEditorSelection(async (event) => {
-    // Immediately remove any existing suggestion UI on cursor move
-    clearSuggestionUIImmediate();
-    scheduleSuggestionsDebounced();
-  });
-
-  vscode.window.onDidChangeActiveTextEditor(async (editor) => {
-    // Clear any previous editor's suggestion immediately
-    clearSuggestionUIImmediate();
-    scheduleSuggestionsDebounced();
-  });
-
-  scheduleSuggestionsDebounced();
 }
 
 // This method is called when your extension is deactivated

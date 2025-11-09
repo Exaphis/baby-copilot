@@ -1,5 +1,5 @@
 {
-  "name": "@baby-copilot/code-renderer",
+  "name": "@baby-copilot/core",
   "version": "0.0.1",
   "private": false,
   "type": "module",

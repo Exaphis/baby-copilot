@@ -34,24 +34,42 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   // Create a decoration type (you can also set 'before' instead of 'after')
-  const decoType = vscode.window.createTextEditorDecorationType({
-    after: {
-      contentText: " ← hello from a decoration",
-      // optional styling:
-      color: new vscode.ThemeColor("editorCodeLens.foreground"),
-      margin: "0 0 0 8px",
-      textDecoration:
-        "none; padding: 0 4px; border: 1px solid red; border-radius: 3px;",
-    },
-  });
+  // const decoType = vscode.window.createTextEditorDecorationType({
+  //   after: {
+  //     contentText: " ← hello from a decoration",
+  //     // optional styling:
+  //     color: new vscode.ThemeColor("editorCodeLens.foreground"),
+  //     margin: "0 0 0 8px",
+  //     textDecoration:
+  //       "none; padding: 0 4px; border: 1px solid red; border-radius: 3px;",
+  //   },
+  // });
+  const posStart1 = new vscode.Position(6, 5);
+  const posEnd1 = new vscode.Position(6, 12);
+  const posStart2 = new vscode.Position(8, 5);
+  const posEnd2 = new vscode.Position(8, 12);
+  const ranges = [
+    new vscode.Range(posStart1, posEnd1),
+    new vscode.Range(posStart2, posEnd2),
+  ];
 
-  const pos = new vscode.Position(5, 0);
-  const opts: vscode.DecorationOptions = { range: new vscode.Range(pos, pos) };
+  for (const range of ranges) {
+    const decoType = vscode.window.createTextEditorDecorationType({
+      backgroundColor: new vscode.ThemeColor(
+        "diffEditor.removedTextBackground"
+      ),
+      borderColor: new vscode.ThemeColor("diffEditor.removedTextBorder"),
+    });
 
-  // Apply the decoration
-  editor.setDecorations(decoType, [opts]);
+    const opts: vscode.DecorationOptions = {
+      range: range,
+    };
 
-  context.subscriptions.push(decoType);
+    // Apply the decoration
+    editor.setDecorations(decoType, [opts]);
+
+    context.subscriptions.push(decoType);
+  }
 }
 
 // This method is called when your extension is deactivated

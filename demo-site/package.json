@@ -12,7 +12,7 @@
     "serve": "pnpm run build && pnpm run start"
   },
   "dependencies": {
-    "@baby-copilot/code-renderer": "workspace:*",
+    "@baby-copilot/core": "workspace:*",
     "express": "^4.19.2",
     "chokidar": "^3.6.0"
   },
