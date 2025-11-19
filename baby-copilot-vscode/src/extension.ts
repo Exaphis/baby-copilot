@@ -102,98 +102,84 @@ class NesHandler {
     // --- Render ---
     const diff = dmpDiff(snippet, nesEdit.content);
 
-    function updateRanges(ranges: DiffRange[]): vscode.Range[] {
+    // Helper to translate DiffRange coordinates to document coordinates
+    const toDocumentRanges = (ranges: DiffRange[]): vscode.Range[] => {
       return ranges.map(
         (dr) =>
           new vscode.Range(
-            new vscode.Position(
-              dr.start.line + rangeForSnippet.start.line,
-              dr.start.character
-            ),
-            new vscode.Position(
-              dr.end.line + rangeForSnippet.start.line,
-              dr.end.character
-            )
+            rangeForSnippet.start.line + dr.start.line,
+            dr.start.character,
+            rangeForSnippet.start.line + dr.end.line,
+            dr.end.character
           )
       );
-    }
+    };
+
+    // Helper to extract text from a DiffRange within a given content string
+    const getTextInRange = (text: string, range: DiffRange): string => {
+      const lines = text.split(/\r\n|\r|\n/);
+
+      if (range.start.line === range.end.line) {
+        return lines[range.start.line].substring(
+          range.start.character,
+          range.end.character
+        );
+      }
+
+      const result: string[] = [
+        lines[range.start.line].substring(range.start.character),
+        ...lines.slice(range.start.line + 1, range.end.line),
+        lines[range.end.line].substring(0, range.end.character),
+      ];
+
+      return result.join("\n");
+    };
+
+    // Helper to split removal ranges into text and empty-line decorations
+    const applyRemovalDecorations = (ranges: vscode.Range[]) => {
+      const emptyLineRanges: vscode.Range[] = [];
+
+      for (const range of ranges) {
+        // Check each fully-covered line within this removal range
+        const firstFullLine = range.start.character === 0
+          ? range.start.line
+          : range.start.line + 1;
+
+        for (let line = firstFullLine; line <= range.end.line; line++) {
+          const lineRange = document.lineAt(line).range;
+          // If this line is fully within the removal and is empty, track it
+          if (range.contains(lineRange) && document.lineAt(line).isEmptyOrWhitespace) {
+            emptyLineRanges.push(lineRange);
+          }
+        }
+      }
+
+      this.editor.setDecorations(INLINE_REMOVE_DECORATION_TYPE, ranges);
+      this.editor.setDecorations(INLINE_REMOVE_EMPTY_LINE_DECORATION_TYPE, emptyLineRanges);
+    };
 
     let customDecorationTypes = [];
     if (diff.left.length === 0 && diff.right.length === 0) {
       // Base case: nothing
     } else if (diff.left.length > 0 && diff.right.length === 0) {
       // Case 1: all deletions
-      const updatedLeftRanges = updateRanges(diff.left);
-      this.editor.setDecorations(
-        INLINE_REMOVE_DECORATION_TYPE,
-        updatedLeftRanges
-      );
-
-      // find lines that cover empty lines within the diff.left ranges
-      const emptyLines = [];
-      for (const range of updatedLeftRanges) {
-        // we care about whole lines, not partial
-        const start =
-          range.start.character === 0
-            ? range.start
-            : new vscode.Position(range.start.line + 1, 0);
-        const newRange = new vscode.Range(start, range.end);
-
-        const lines = document.getText(newRange).split(/\r\n|\r|\n/);
-        emptyLines.push(
-          ...Array.from(lines.entries())
-            .filter(([_i, line]) => line.length === 0)
-            .map(([i, _line]) => newRange.start.line + i)
-        );
-      }
-      this.editor.setDecorations(
-        INLINE_REMOVE_EMPTY_LINE_DECORATION_TYPE,
-        emptyLines.map(
-          (l) =>
-            new vscode.Range(
-              new vscode.Position(l, 0),
-              new vscode.Position(l, 0)
-            )
-        )
-      );
+      applyRemovalDecorations(toDocumentRanges(diff.left));
     } else if (diff.left.length === 0 && diff.right.length > 0) {
-      // Case 2: all additions
-      function getTextInRange(text: string, range: DiffRange): string {
-        const lines = text.split(/\r\n|\r|\n/);
+      // Case 2: all additions - render as ghost text
+      const documentRanges = toDocumentRanges(diff.right);
 
-        // Single line range
-        if (range.start.line === range.end.line) {
-          return lines[range.start.line].substring(
-            range.start.character,
-            range.end.character
-          );
-        }
+      // Map each addition range back to its position in the original document
+      // by subtracting the accumulated content that was added before it
+      let accumulatedLines = 0;
+      let accumulatedChars = 0;
 
-        // Multi-line range
-        const result: string[] = [];
-
-        // First line (from start.character to end of line)
-        result.push(lines[range.start.line].substring(range.start.character));
-
-        // Middle lines (full lines)
-        for (let i = range.start.line + 1; i < range.end.line; i++) {
-          result.push(lines[i]);
-        }
-
-        // Last line (from start of line to end.character)
-        result.push(lines[range.end.line].substring(0, range.end.character));
-
-        return result.join("\n");
-      }
-
-      const updatedRanges = updateRanges(diff.right);
-      let lineOffset = 0;
-      let charOffset = 0;
       for (let i = 0; i < diff.right.length; i++) {
+        const originalRange = documentRanges[i];
         const ghostPosition = new vscode.Position(
-          updatedRanges[i].start.line - lineOffset,
-          updatedRanges[i].start.character - charOffset
+          originalRange.start.line - accumulatedLines,
+          originalRange.start.character - accumulatedChars
         );
+
         const ghostTextDecorationType =
           vscode.window.createTextEditorDecorationType({
             after: {
@@ -205,54 +191,26 @@ class NesHandler {
               borderColor: new vscode.ThemeColor("editorGhostText.border"),
             },
           });
+
         this.editor.setDecorations(ghostTextDecorationType, [
           new vscode.Range(ghostPosition, ghostPosition),
         ]);
-        // we need to offset the next suggestion by the number of lines/characters
-        // the ghost text takes up
-        lineOffset += updatedRanges[i].end.line - updatedRanges[i].start.line;
-        charOffset =
-          updatedRanges[i].end.character -
-          (updatedRanges[i].isSingleLine
-            ? updatedRanges[i].start.character
-            : 0);
+
+        // Update offsets for next iteration
+        const rangeSpan = {
+          lines: originalRange.end.line - originalRange.start.line,
+          chars: originalRange.isSingleLine
+            ? originalRange.end.character - originalRange.start.character
+            : originalRange.end.character,
+        };
+        accumulatedLines += rangeSpan.lines;
+        accumulatedChars = rangeSpan.chars;
+
         customDecorationTypes.push(ghostTextDecorationType);
       }
     } else if (diff.left.length > 0 && diff.right.length > 0) {
-      // Case 3: mixed
-      // We render removals inline, and additions in the overlay
-      const updatedLeftRanges = updateRanges(diff.left);
-      this.editor.setDecorations(
-        INLINE_REMOVE_DECORATION_TYPE,
-        updatedLeftRanges
-      );
-
-      // find lines that cover empty lines within the diff.left ranges
-      const emptyLines = [];
-      for (const range of updatedLeftRanges) {
-        // we care about whole lines, not partial
-        const start =
-          range.start.character === 0
-            ? range.start
-            : new vscode.Position(range.start.line + 1, 0);
-        const newRange = new vscode.Range(start, range.end);
-        const lines = document.getText(newRange).split(/\r\n|\r|\n/);
-        emptyLines.push(
-          ...Array.from(lines.entries())
-            .filter(([_i, line]) => line.length === 0)
-            .map(([i, _line]) => newRange.start.line + i)
-        );
-      }
-      this.editor.setDecorations(
-        INLINE_REMOVE_EMPTY_LINE_DECORATION_TYPE,
-        emptyLines.map(
-          (l) =>
-            new vscode.Range(
-              new vscode.Position(l, 0),
-              new vscode.Position(l, 0)
-            )
-        )
-      );
+      // Case 3: mixed - show removals inline and additions in overlay
+      applyRemovalDecorations(toDocumentRanges(diff.left));
 
       const cr = SvgCodeRenderer.getInstance();
       const lines = nesEdit.content.split(/\r\n|\r|\n/);
