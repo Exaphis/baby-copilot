@@ -29,6 +29,14 @@ const INLINE_REMOVE_DECORATION_TYPE =
     borderColor: new vscode.ThemeColor("diffEditor.removedTextBorder"),
   });
 
+// Decoration for empty line removals with hatched/slashed background
+const INLINE_REMOVE_EMPTY_LINE_DECORATION_TYPE =
+  vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    backgroundColor: new vscode.ThemeColor("diffEditor.removedTextBackground"),
+    borderColor: new vscode.ThemeColor("diffEditor.removedTextBorder"),
+  });
+
 class NesHandler {
   editor: vscode.TextEditor;
   cts: vscode.CancellationTokenSource;
@@ -48,6 +56,7 @@ class NesHandler {
     // Remove existing diff data
     this.diffData?.customDecorationTypes.forEach((x) => x.dispose());
     this.editor.setDecorations(INLINE_REMOVE_DECORATION_TYPE, []);
+    this.editor.setDecorations(INLINE_REMOVE_EMPTY_LINE_DECORATION_TYPE, []);
     this.diffData = null;
 
     const document = this.editor.document;
@@ -114,9 +123,38 @@ class NesHandler {
       // Base case: nothing
     } else if (diff.left.length > 0 && diff.right.length === 0) {
       // Case 1: all deletions
+      const updatedLeftRanges = updateRanges(diff.left);
       this.editor.setDecorations(
         INLINE_REMOVE_DECORATION_TYPE,
-        updateRanges(diff.left)
+        updatedLeftRanges
+      );
+
+      // find lines that cover empty lines within the diff.left ranges
+      const emptyLines = [];
+      for (const range of updatedLeftRanges) {
+        // we care about whole lines, not partial
+        const start =
+          range.start.character === 0
+            ? range.start
+            : new vscode.Position(range.start.line + 1, 0);
+        const newRange = new vscode.Range(start, range.end);
+
+        const lines = document.getText(newRange).split(/\r\n|\r|\n/);
+        emptyLines.push(
+          ...Array.from(lines.entries())
+            .filter(([_i, line]) => line.length === 0)
+            .map(([i, _line]) => newRange.start.line + i)
+        );
+      }
+      this.editor.setDecorations(
+        INLINE_REMOVE_EMPTY_LINE_DECORATION_TYPE,
+        emptyLines.map(
+          (l) =>
+            new vscode.Range(
+              new vscode.Position(l, 0),
+              new vscode.Position(l, 0)
+            )
+        )
       );
     } else if (diff.left.length === 0 && diff.right.length > 0) {
       // Case 2: all additions
@@ -156,8 +194,6 @@ class NesHandler {
           updatedRanges[i].start.line - lineOffset,
           updatedRanges[i].start.character - charOffset
         );
-        const ghostText = getTextInRange(nesEdit.content, diff.right[i]);
-        console.log(diff.right[i], ghostPosition, ghostText);
         const ghostTextDecorationType =
           vscode.window.createTextEditorDecorationType({
             after: {
@@ -185,9 +221,37 @@ class NesHandler {
     } else if (diff.left.length > 0 && diff.right.length > 0) {
       // Case 3: mixed
       // We render removals inline, and additions in the overlay
+      const updatedLeftRanges = updateRanges(diff.left);
       this.editor.setDecorations(
         INLINE_REMOVE_DECORATION_TYPE,
-        updateRanges(diff.left)
+        updatedLeftRanges
+      );
+
+      // find lines that cover empty lines within the diff.left ranges
+      const emptyLines = [];
+      for (const range of updatedLeftRanges) {
+        // we care about whole lines, not partial
+        const start =
+          range.start.character === 0
+            ? range.start
+            : new vscode.Position(range.start.line + 1, 0);
+        const newRange = new vscode.Range(start, range.end);
+        const lines = document.getText(newRange).split(/\r\n|\r|\n/);
+        emptyLines.push(
+          ...Array.from(lines.entries())
+            .filter(([_i, line]) => line.length === 0)
+            .map(([i, _line]) => newRange.start.line + i)
+        );
+      }
+      this.editor.setDecorations(
+        INLINE_REMOVE_EMPTY_LINE_DECORATION_TYPE,
+        emptyLines.map(
+          (l) =>
+            new vscode.Range(
+              new vscode.Position(l, 0),
+              new vscode.Position(l, 0)
+            )
+        )
       );
 
       const cr = SvgCodeRenderer.getInstance();
@@ -262,6 +326,7 @@ class NesHandler {
     this.diffData?.customDecorationTypes.forEach((x) => x.dispose());
     this.diffData = null;
     this.editor.setDecorations(INLINE_REMOVE_DECORATION_TYPE, []);
+    this.editor.setDecorations(INLINE_REMOVE_EMPTY_LINE_DECORATION_TYPE, []);
 
     // Clear context to disable Tab/Escape keybindings
     vscode.commands.executeCommand(
@@ -296,8 +361,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const cr = SvgCodeRenderer.getInstance();
   await cr.setTheme("dark-plus");
-
-  console.log('Congratulations, your extension "baby-copilot" is now active!');
 
   const disposable = vscode.commands.registerCommand(
     "baby-copilot.triggerSuggestion",
