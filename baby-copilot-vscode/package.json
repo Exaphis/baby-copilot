@@ -52,23 +52,18 @@
   },
   "scripts": {
     "vscode:prepublish": "pnpm run compile",
-    "compile": "tsc -p ./",
+    "clean": "rm -rf out tsconfig.tsbuildinfo",
+    "compile": "tsc -b ./",
     "watch": "tsc -watch -p ./",
-    "pretest": "pnpm run compile && pnpm run lint",
-    "lint": "eslint src",
-    "test": "vscode-test"
+    "lint": "eslint src"
   },
   "devDependencies": {
     "@shikijs/transformers": "^3.7.0",
     "@types/diff-match-patch": "^1.0.36",
-    "@types/jsdom": "^21.1.7",
-    "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/vscode": "^1.101.0",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
-    "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.25.1",
     "typescript": "^5.8.3"
   },

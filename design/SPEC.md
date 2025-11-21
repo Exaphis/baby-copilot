@@ -235,7 +235,7 @@ interface SuggestionOutcomeEvent {
 - Telemetry gating: if user declines, feedback sink swaps to no-op.
 
 ## 9. Development Tooling
-- **Playground** (`demo-site/playground`): paste current/suggested text, adjust policy thresholds, view presenters side-by-side.
+- **Playground** (`playground/web`): paste current/suggested text, adjust policy thresholds, view presenters side-by-side.
 - **Context Dump & Replay**: `dumpSnapshot` command writes JSON; `pnpm run replay --file dump.json` renders identical UI in playground.
 - **Policy Inspector**: optional overlay showing hint decisions per span (dev flag).
 - **Model Stub Server**: configurable mock returning deterministic edits for automated tests.

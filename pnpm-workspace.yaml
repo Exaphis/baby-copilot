@@ -1,5 +1,4 @@
 packages:
   - core
   - baby-copilot-vscode
-  - demo-site
   - playground/*

@@ -6,7 +6,7 @@ A tiny version of GitHub Copilot.
 
 - `core/code-renderer`: Shared code highlighting -> SVG renderer (uses `shiki`).
 - `baby-copilot-vscode`: VS Code extension that consumes the renderer package.
-- `demo-site`: Express-based demo site showing multiple diff panes with live reload.
+- `playground/web`: Vite playground for rendering diffs with the core renderer.
 
 ## Prerequisites
 
@@ -38,25 +38,29 @@ Alternatively, build all packages that define a `build` script:
 pnpm -r build
 ```
 
-## Demo Site
+## Justfile shortcuts
+
+If you use `just`, the repo includes common recipes:
+
+- `just` or `just --list` – show available tasks
+- `just install` – `pnpm install`
+- `just build` / `just build-all` – scoped build vs `pnpm -r build`
+- `just build-renderer` – build `@baby-copilot/code-renderer`
+- `just compile-extension` – compile the VS Code extension
+- `just playground-dev` / `playground-build` / `playground-preview` – Vite app for playground/web
+- `just watch-renderer`, `just watch-extension` – watch modes
+- `just test`, `just test-core`, `just test-extension` – test suites (core = `@baby-copilot/core`)
+
+## Playground
 
 - Quick start:
   - `pnpm install`
-  - `pnpm run demo`
-  - Open `http://localhost:3000`
+  - `just playground-dev` (or `pnpm --filter ./playground/web run dev`)
+  - Open the printed Vite dev server URL
 
 - What it does:
-  - Serves multiple diff panes (one per line) rendered by `@baby-copilot/code-renderer`.
-  - Live-reloads previews when you edit files.
-
-- Edit these files to see updates:
-  - `demo-site/demos/greet/before.ts` and `demo-site/demos/greet/after.ts`
-  - `demo-site/demos/algorithm/before.ts` and `demo-site/demos/algorithm/after.ts`
-  - `demo-site/demos/config/before.ts` and `demo-site/demos/config/after.ts`
-
-- Useful scripts:
-  - From repo root: `pnpm run demo` (builds renderer then builds/starts the demo)
-  - Inside demo-site: `pnpm run serve` (build then start), `pnpm run dev` (restarts server on build output changes)
+  - Renders left/right diffs to inline SVG using `@baby-copilot/core`.
+  - Lets you tweak content/language and see both sides (or single-sided) renders.
 
 ## Run the VS Code Extension
 
@@ -78,11 +82,10 @@ pnpm -r build
 
 ## Renderer Package API (brief)
 
-- `CodeRenderer.getInstance()` – singleton accessor
+- `SvgCodeRenderer.getInstance()` – singleton accessor
 - `setTheme(themeName: string)` – set Shiki theme (e.g., `dark-plus`)
-- `getDataUri(code, language, options)` – highlight code to SVG data URI
-- `computeDiff(left, right)` – returns `{ content, diffRanges }` for rendering diffs
-- `getDiffDataUri(left, right, language, options)` – render diff directly to SVG data URI
+- `getDataUri(code, language, options, ranges?)` – highlight code (optionally with diff ranges) to SVG data URI
+- `dmpDiff(left, right)` – compute side-by-side diff ranges for rendering
 
 ## Notes / Ideas
 
