@@ -141,21 +141,26 @@ class NesHandler {
 
       for (const range of ranges) {
         // Check each fully-covered line within this removal range
-        const firstFullLine = range.start.character === 0
-          ? range.start.line
-          : range.start.line + 1;
+        const firstFullLine =
+          range.start.character === 0 ? range.start.line : range.start.line + 1;
 
         for (let line = firstFullLine; line <= range.end.line; line++) {
           const lineRange = document.lineAt(line).range;
           // If this line is fully within the removal and is empty, track it
-          if (range.contains(lineRange) && document.lineAt(line).isEmptyOrWhitespace) {
+          if (
+            range.contains(lineRange) &&
+            document.lineAt(line).isEmptyOrWhitespace
+          ) {
             emptyLineRanges.push(lineRange);
           }
         }
       }
 
       this.editor.setDecorations(INLINE_REMOVE_DECORATION_TYPE, ranges);
-      this.editor.setDecorations(INLINE_REMOVE_EMPTY_LINE_DECORATION_TYPE, emptyLineRanges);
+      this.editor.setDecorations(
+        INLINE_REMOVE_EMPTY_LINE_DECORATION_TYPE,
+        emptyLineRanges
+      );
     };
 
     let customDecorationTypes = [];
@@ -172,18 +177,37 @@ class NesHandler {
       // by subtracting the accumulated content that was added before it
       let accumulatedLines = 0;
       let accumulatedChars = 0;
+      let currentLine = -1;
 
       for (let i = 0; i < diff.right.length; i++) {
         const originalRange = documentRanges[i];
+
+        // Reset char accumulation when moving to a new line
+        if (originalRange.start.line !== currentLine) {
+          currentLine = originalRange.start.line;
+          accumulatedChars = 0;
+        }
+
         const ghostPosition = new vscode.Position(
           originalRange.start.line - accumulatedLines,
           originalRange.start.character - accumulatedChars
         );
 
+        const ghostText = getTextInRange(nesEdit.content, diff.right[i]);
+
+        // If ghost text is entirely whitespace, make it visible with middle dots
+        let displayText = ghostText;
+        if (ghostText.trim().length === 0 && ghostText.length > 0) {
+          const tabSize = (this.editor.options.tabSize as number) ?? 4;
+          displayText = ghostText
+            .replace(/\t/g, '·'.repeat(tabSize))
+            .replace(/ /g, '·');
+        }
+
         const ghostTextDecorationType =
           vscode.window.createTextEditorDecorationType({
             after: {
-              contentText: getTextInRange(nesEdit.content, diff.right[i]),
+              contentText: displayText,
               color: new vscode.ThemeColor("editorGhostText.foreground"),
               backgroundColor: new vscode.ThemeColor(
                 "editorGhostText.background"
@@ -204,7 +228,14 @@ class NesHandler {
             : originalRange.end.character,
         };
         accumulatedLines += rangeSpan.lines;
-        accumulatedChars = rangeSpan.chars;
+        if (rangeSpan.lines > 0) {
+          // Multi-line addition: reset to end character position and update current line
+          accumulatedChars = rangeSpan.chars;
+          currentLine = originalRange.end.line;
+        } else {
+          // Same-line addition: accumulate characters
+          accumulatedChars += rangeSpan.chars;
+        }
 
         customDecorationTypes.push(ghostTextDecorationType);
       }
