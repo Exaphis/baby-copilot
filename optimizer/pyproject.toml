@@ -8,4 +8,6 @@ dependencies = [
     "datasets>=4.4.1",
     "dspy>=3.0.4",
     "ipdb>=0.13.13",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
 ]

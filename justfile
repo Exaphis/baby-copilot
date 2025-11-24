@@ -45,3 +45,10 @@ test-extension:
 
 lint-extension:
   pnpm --filter ./baby-copilot-vscode run lint
+
+# Python optimizer server
+install-optimizer:
+  cd optimizer && uv sync
+
+run-dspy-server:
+  cd optimizer && uv run python server.py
