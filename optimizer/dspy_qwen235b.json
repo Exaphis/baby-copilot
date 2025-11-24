@@ -1,0 +1,34 @@
+{
+  "traces": [],
+  "train": [],
+  "demos": [],
+  "signature": {
+    "instructions": "In this task, you are to predict the next logical edit to code within a TypeScript/JavaScript codebase, specifically for an autocompletion system called \"NextEdit\" integrated into a VSCode extension. \n\n**Understanding the Context:**\nThe codebase contains a PrefetchQueue class that follows a singleton pattern to manage code suggestion prefetching. This system handles autocompletion predictions, editable regions, edit chains, and jump suggestions across different files in a VSCode extension for a code completion feature.\n\n**Input Format:**\n- Code excerpt between `<|editable_start|>` and `<|editable_end|>` markers\n- A cursor position denoted by `<|cursor|>`\n- Context information from related files\n- Prior edits that have been made to the codebase\n\n**Important Technical Details to Consider:**\n1. Singleton pattern implementation requires careful handling - when modifying class constructors, ensure you don't create duplicate constructors (which is invalid TypeScript).\n2. When implementing a singleton pattern, make the existing constructor private and add a getInstance() static method.\n3. The PrefetchQueue manages unprocessed and processed queues for code suggestions.\n4. There's a mechanism to track whether the system is using full file diffs.\n5. The system has methods like process(), enqueue(), dequeue(), and should include appropriate context when calling methods.\n6. When working with TypeScript, maintain proper type signatures and avoid introducing type mismatches.\n\n**Guidelines for Your Predictions:**\n1. When modifying class structures (especially singletons), ensure you don't create duplicate methods or constructors.\n2. Follow existing patterns in the codebase before introducing new implementations.\n3. If commenting out code is part of the expected edit, maintain that approach rather than immediately implementing the functionality.\n4. Pay attention to indentation and code formatting consistency.\n5. Consider the broader context - edits should align with the overall architecture of the NextEdit system.\n6. When dealing with async operations, maintain proper await/async patterns.\n7. Ensure your edits would compile correctly without introducing syntax or type errors.\n\nMake your prediction for the next edit based on the provided context and guidelines. Your response should include only the replacement for the text between the markers, with the same level of indentation as the original.",
+    "fields": [
+      {
+        "prefix": "Context:",
+        "description": "${context}"
+      },
+      {
+        "prefix": "Edits:",
+        "description": "${edits}"
+      },
+      {
+        "prefix": "Excerpt:",
+        "description": "${excerpt}"
+      },
+      {
+        "prefix": "Edited:",
+        "description": "${edited}"
+      }
+    ]
+  },
+  "lm": null,
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.13",
+      "dspy": "3.0.4",
+      "cloudpickle": "3.1"
+    }
+  }
+}
