@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import { generateText } from "ai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 
 export interface Diff {
   path: string; // path to the file
@@ -16,98 +18,84 @@ export interface NesSuggestion {
   content: string; // new contents of the editable range
 }
 
+const gateway = createOpenAICompatible({
+  name: "openai",
+  baseURL: "http://localhost:1234/v1",
+});
+
+const SYSTEM_PROMPT = `
+You are Instinct, an intelligent next-edit predictor developed by Continue.dev. Your role as an AI assistant is to help developers complete their code tasks by predicting the next edit that they will make within the section of code marked by <|editable_region_start|> and <|editable_region_end|> tags.
+
+You have access to the following information to help you make informed suggestions:
+
+- Context: In the section marked "### Context", there are context items from potentially relevant files in the developer's codebase. Each context item consists of a <|context_file|> marker, the filepath, a <|snippet|> marker, and then some content from that file, in that order. Keep in mind that not all of the context information may be relevant to the task, so use your judgement to determine which parts to consider.
+- User Edits: In the section marked "### User Edits:", there is a record of the most recent changes made to the code, helping you understand the evolution of the code and the developer's intentions. These changes are listed from most recent to least recent. It's possible that some of the edit diff history is entirely irrelevant to the developer's change. The changes are provided in a unified line-diff format, i.e. with pluses and minuses for additions and deletions to the code.
+- User Excerpt: In the section marked "### User Excerpt:", there is a filepath to the developer's current file, and then an excerpt from that file. The <|editable_region_start|> and <|editable_region_end|> markers are within this excerpt. Your job is to rewrite only this editable region, not the whole excerpt. The excerpt provides additional context on the surroundings of the developer's edit.
+- Cursor Position: Within the user excerpt's editable region, the <|user_cursor_is_here|> flag indicates where the developer's cursor is currently located, which can be crucial for understanding what part of the code they are focusing on. Do not produce this marker in your output; simply take it into account.
+
+Your task is to predict and complete the changes the developer would have made next in the editable region. The developer may have stopped in the middle of typing. Your goal is to keep the developer on the path that you think they're following. Some examples include further implementing a class, method, or variable, or improving the quality of the code. Make sure the developer doesn't get distracted by ensuring your suggestion is relevant. Consider what changes need to be made next, if any. If you think changes should be made, ask yourself if this is truly what needs to happen. If you are confident about it, then proceed with the changes.
+
+# Steps
+
+1. **Review Context**: Analyze the context from the resources provided, such as recently viewed snippets, edit history, surrounding code, and cursor location.
+2. **Evaluate Current Code**: Determine if the current code within the tags requires any corrections or enhancements.
+3. **Suggest Edits**: If changes are required, ensure they align with the developer's patterns and improve code quality.
+4. **Maintain Consistency**: Ensure indentation and formatting follow the existing code style.
+
+# Output Format
+
+- Provide only the revised code within the tags. Do not include the tags in your output.
+- Ensure that you do not output duplicate code that exists outside of these tags.
+- Avoid undoing or reverting the developer's last change unless there are obvious typos or errors.
+`;
+
 export async function requestEdit(
   context: NesContext,
   token: vscode.CancellationToken
 ): Promise<NesSuggestion | null> {
-  try {
-    if (token.isCancellationRequested) {
-      return null;
-    }
-
-    const url = "http://localhost:8001/predict-edit";
-
-    // Wire cancellation
-    const controller = new AbortController();
-    const onCancel = () => controller.abort();
-    token.onCancellationRequested(onCancel);
-
-    try {
-      const reqStart = Date.now();
-
-      // Get editable content
-      const editableContent = context.doc.getText(context.editableRange);
-
-      // Calculate cursor offset within editable range
-      const cursorOffset =
-        context.doc.offsetAt(context.cursor) -
-        context.doc.offsetAt(context.editableRange.start);
-
-      // Build request body
-      const requestBody = {
-        filePath: context.doc.uri.fsPath,
-        editableContent,
-        cursorOffset,
-        diffTrajectory: context.diffTrajectory,
-        contextItems: [],
-      };
-
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-
-      const buildTime = Date.now() - reqStart;
-      console.log(`[Timing] Build request: ${buildTime}ms`);
-
-      const fetchStart = Date.now();
-      const resp = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-
-      const fetchTime = Date.now() - fetchStart;
-      console.log(`[Timing] Fetch complete: ${fetchTime}ms`);
-
-      if (!resp.ok) {
-        const elapsed = Date.now() - reqStart;
-        const errText = await resp.text;
-        console.error(
-          `DSPy server error ${resp.status}: ${resp.statusText} (after ${elapsed}ms)\n${errText}`
-        );
-        return null;
-      }
-
-      const parseStart = Date.now();
-      const data = (await resp.json()) as any;
-      const parseTime = Date.now() - parseStart;
-      console.log(`[Timing] Parse JSON: ${parseTime}ms`);
-      const content: string | undefined = data?.content ?? undefined;
-      if (!content || typeof content !== "string") {
-        const elapsed = Date.now() - reqStart;
-        console.warn("DSPy server returned empty content");
-        console.warn(`requestEdit latency (empty): ${elapsed}ms`);
-        return null;
-      }
-
-      // If generated edit matches current editable text, return null (no suggestion)
-      const currentEditable = context.doc.getText(context.editableRange);
-      if (currentEditable === content) {
-        const elapsedNoChange = Date.now() - reqStart;
-        console.log(`requestEdit latency (no-change): ${elapsedNoChange}ms`);
-        return null;
-      }
-
-      const elapsed = Date.now() - reqStart;
-      console.log(`[Timing] Total e2e: ${elapsed}ms; model=dspy`);
-      return { content };
-    } finally {
-      // best-effort cleanup for the cancellation handler
-      token.onCancellationRequested(() => {});
-    }
-  } catch (err) {
-    console.error("requestEdit failed:", err);
+  if (token.isCancellationRequested) {
     return null;
   }
+
+  let prompt =
+    "Reference the user excerpt, user edits, and the snippets to understand the developer's intent. Update the editable region of the user excerpt by predicting and completing the changes they would have made next. This may be a deletion, addition, or modification of code.";
+  prompt += "\n\n";
+  prompt += "### Context:\n";
+  // TODO: add context files
+  prompt += "\n\n";
+  prompt += "### User Edits:\n";
+  prompt += context.diffTrajectory
+    .map(
+      (diff) =>
+        `User edited file "${diff.path}"\n\n\`\`\`diff\n${diff.diff}\n\`\`\`\n`
+    )
+    .join("\n");
+
+  const full = context.doc.getText();
+  const start = context.doc.offsetAt(context.editableRange.start);
+  const end = context.doc.offsetAt(context.editableRange.end);
+  const prefix = full.slice(0, start);
+  const middle = full.slice(start, end);
+  const suffix = full.slice(end);
+  const path = context.doc.uri.fsPath;
+
+  prompt += "\n\n";
+  prompt += `### User Excerpt:\n"${path}"\n\n${prefix}<|editable_region_start|>${middle}<|editable_region_end|>${suffix}`;
+
+  const resp = await generateText({
+    model: gateway("instinct"),
+    prompt: [
+      {
+        role: "system",
+        content: SYSTEM_PROMPT,
+      },
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+  });
+  console.log(resp);
+
+  return { content: resp.text };
 }

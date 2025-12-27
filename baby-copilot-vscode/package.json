@@ -54,9 +54,11 @@
   },
   "type": "module",
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^2.0.1",
+    "@baby-copilot/core": "workspace:*",
     "@types/diff": "^8.0.0",
+    "ai": "^6.0.3",
     "diff": "^8.0.2",
-    "jsdom": "^26.1.0",
-    "@baby-copilot/core": "workspace:*"
+    "jsdom": "^26.1.0"
   }
 }
