@@ -13,6 +13,9 @@
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
+  "enabledApiProposals": [
+    "inlineCompletionsAdditions"
+  ],
   "contributes": {
     "commands": [
       {
@@ -22,14 +25,6 @@
       {
         "command": "baby-copilot.viewLogs",
         "title": "View Data Collection Logs"
-      },
-      {
-        "command": "baby-copilot.acceptSuggestion",
-        "title": "Accept Suggestion"
-      },
-      {
-        "command": "baby-copilot.cancelSuggestion",
-        "title": "Cancel Suggestion"
       }
     ],
     "keybindings": [
@@ -37,16 +32,6 @@
         "command": "baby-copilot.triggerSuggestion",
         "key": "alt+\\",
         "when": "editorTextFocus"
-      },
-      {
-        "command": "baby-copilot.acceptSuggestion",
-        "key": "Tab",
-        "when": "baby-copilot.hasSuggestion"
-      },
-      {
-        "command": "baby-copilot.cancelSuggestion",
-        "key": "Escape",
-        "when": "baby-copilot.hasSuggestion && editorTextFocus"
       }
     ]
   },
