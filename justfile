@@ -10,14 +10,20 @@ install:
 build:
   pnpm -r --filter ./core --filter ./baby-copilot-vscode build
 
+build-core:
+  pnpm -C core build
+
+build-extension:
+  pnpm -C baby-copilot-vscode build
+
 build-all:
   pnpm run build:all
 
 build-renderer:
-  pnpm --filter @baby-copilot/code-renderer build
+  pnpm --filter @baby-copilot/core build
 
 compile-extension:
-  pnpm --filter ./baby-copilot-vscode run compile
+  pnpm -C baby-copilot-vscode compile
 
 playground-dev:
   pnpm --filter ./playground/web run dev
@@ -38,7 +44,7 @@ test:
   pnpm -r test
 
 test-core:
-  pnpm --filter @baby-copilot/core test
+  pnpm -C core test
 
 test-extension:
   pnpm --filter ./baby-copilot-vscode test

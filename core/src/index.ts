@@ -1,5 +1,19 @@
-export { dmpDiff } from "./diff.js";
-export type { DiffType, Position, DiffRange, SideBySideDiffRanges } from "./diff.js";
-
-export { SvgCodeRenderer, escapeForSVG, kebabOfStr } from "./svgRenderer.js";
-export type { ConversionOptions } from "./svgRenderer.js";
+export {
+  createDiffTrackerState,
+  applySnapshot,
+  rememberSnapshot,
+  forgetSnapshot,
+  buildPrompt,
+  formatDefinitionSnippets,
+} from "./nextEdit/index.js";
+export type {
+  DiffEntry,
+  DiffTrackerOptions,
+  DiffTrackerEntryState,
+  DiffTrackerState,
+  SnapshotInput,
+  DefinitionSnippet,
+  TextRange,
+  EditorSnapshot,
+  PromptParts,
+} from "./nextEdit/index.js";

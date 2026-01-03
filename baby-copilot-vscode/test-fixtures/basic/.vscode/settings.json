@@ -1,0 +1,9 @@
+{
+  "task.allowAutomaticTasks": "off",
+  "extensions.autoUpdate": false,
+  "extensions.autoCheckUpdates": false,
+  "git.enabled": false,
+  "workbench.enableExperiments": false,
+  "workbench.tips.enabled": false,
+  "workbench.startupEditor": "none"
+}

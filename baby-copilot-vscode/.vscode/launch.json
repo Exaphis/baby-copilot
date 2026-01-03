@@ -12,7 +12,7 @@
 			"args": [
 				"--extensionDevelopmentPath=${workspaceFolder}",
 				"--enable-proposed-api",
-				"undefined_publisher.baby-copilot"
+				"baby-copilot.baby-copilot"
 			],
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js"

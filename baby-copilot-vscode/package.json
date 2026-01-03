@@ -1,5 +1,6 @@
 {
   "name": "baby-copilot",
+  "publisher": "baby-copilot",
   "displayName": "Baby Copilot",
   "description": "A tiny copilot.",
   "version": "0.0.1",
@@ -40,19 +41,23 @@
     "clean": "rm -rf out tsconfig.tsbuildinfo",
     "compile": "tsc -b ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "pretest": "pnpm run clean && pnpm run compile && pnpm run lint",
+    "test": "vscode-test"
   },
   "devDependencies": {
-    "@shikijs/transformers": "^3.7.0",
-    "@types/diff-match-patch": "^1.0.36",
     "@types/node": "20.x",
     "@types/vscode": "^1.101.0",
+    "@types/mocha": "^10.0.10",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/test-cli": "^0.0.9",
     "eslint": "^9.25.1",
+    "glob": "^10.4.5",
+    "mocha": "^10.8.2",
     "typescript": "^5.8.3"
   },
-  "type": "module",
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.1",
     "@baby-copilot/core": "workspace:*",

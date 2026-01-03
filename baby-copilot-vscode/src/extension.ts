@@ -4,11 +4,16 @@ import * as fs from "fs";
 import * as path from "path";
 import * as nesUtils from "./nesUtils.js";
 import { randomUUID } from "crypto";
+import { VscodeDiffTracker } from "./adapter/vscodeDiffTracker.js";
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export async function activate(context: vscode.ExtensionContext) {
+  // trigger inline edit on baby-copilot.triggerSuggestion
   let shouldProvideInlineEdit = false;
+
+  const diffTracker = new VscodeDiffTracker({
+    maxTrajectory: 20,
+    mergeWindowMs: 5000,
+  });
 
   const inlineProvider: vscode.InlineCompletionItemProvider = {
     async provideInlineCompletionItems(document, position, context, token) {
@@ -28,7 +33,7 @@ export async function activate(context: vscode.ExtensionContext) {
       let edit = await nesUtils.requestEdit(
         {
           doc: document,
-          diffTrajectory: [],
+          diffTrajectory: diffTracker.diffTrajectory,
           cursor: position,
           editableRange: rangeForSnippet,
         },
@@ -85,6 +90,26 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     );
 
+  vscode.workspace.textDocuments.forEach((doc) => {
+    diffTracker.handleOpen(doc);
+  });
+
+  const openDocumentListener = vscode.workspace.onDidOpenTextDocument((doc) => {
+    diffTracker.handleOpen(doc);
+  });
+
+  const closeDocumentListener = vscode.workspace.onDidCloseTextDocument(
+    (doc) => {
+      diffTracker.handleClose(doc);
+    }
+  );
+
+  const changeDocumentListener = vscode.workspace.onDidChangeTextDocument(
+    (event) => {
+      diffTracker.handleChange(event);
+    }
+  );
+
   const disposable = vscode.commands.registerCommand(
     "baby-copilot.triggerSuggestion",
     async () => {
@@ -115,7 +140,10 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     disposable,
     viewLogsCommand,
-    inlineCompletionProvider
+    inlineCompletionProvider,
+    openDocumentListener,
+    closeDocumentListener,
+    changeDocumentListener
   );
 }
 

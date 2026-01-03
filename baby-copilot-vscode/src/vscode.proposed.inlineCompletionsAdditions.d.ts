@@ -112,34 +112,29 @@ declare module 'vscode' {
 		 * @param completionItem The completion item that was shown.
 		 * @param updatedInsertText The actual insert text (after brackets were fixed).
 		 */
-		// eslint-disable-next-line local/vscode-dts-provider-naming
 		handleDidShowCompletionItem?(completionItem: InlineCompletionItem, updatedInsertText: string): void;
 
 		/**
 		 * Is called when an inline completion item was accepted partially.
 		 * @param info Additional info for the partial accepted trigger.
 		 */
-		// eslint-disable-next-line local/vscode-dts-provider-naming
 		handleDidPartiallyAcceptCompletionItem?(completionItem: InlineCompletionItem, info: PartialAcceptInfo): void;
 
 		/**
 		 * Is called when an inline completion item is no longer being used.
 		 * Provides a reason of why it is not used anymore.
 		*/
-		// eslint-disable-next-line local/vscode-dts-provider-naming
 		handleEndOfLifetime?(completionItem: InlineCompletionItem, reason: InlineCompletionEndOfLifeReason): void;
 
 		/**
 		 * Is called when an inline completion list is no longer being used (same reference as the list returned by provideInlineEditsForRange).
 		*/
-		// eslint-disable-next-line local/vscode-dts-provider-naming
 		handleListEndOfLifetime?(list: InlineCompletionList, reason: InlineCompletionsDisposeReason): void;
 
 		readonly onDidChange?: Event<void>;
 
 		readonly modelInfo?: InlineCompletionModelInfo;
 		readonly onDidChangeModelInfo?: Event<void>;
-		// eslint-disable-next-line local/vscode-dts-provider-naming
 		setCurrentModelId?(modelId: string): Thenable<void>;
 
 
@@ -150,14 +145,12 @@ declare module 'vscode' {
 		 * @param acceptedLength The length of the substring of the inline completion that was accepted already.
 		 * @deprecated Use `handleDidPartiallyAcceptCompletionItem` with `PartialAcceptInfo` instead.
 		 */
-		// eslint-disable-next-line local/vscode-dts-provider-naming
 		handleDidPartiallyAcceptCompletionItem?(completionItem: InlineCompletionItem, acceptedLength: number): void;
 
 		/**
 		 * @param completionItem The completion item that was rejected.
 		 * @deprecated Use {@link handleEndOfLifetime} instead.
 		*/
-		// eslint-disable-next-line local/vscode-dts-provider-naming
 		handleDidRejectCompletionItem?(completionItem: InlineCompletionItem): void;
 
 		// #endregion
