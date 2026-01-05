@@ -15,7 +15,7 @@ export interface DiffTrackerEntryState {
 }
 
 export interface DiffTrackerState {
-  trajectory: DiffEntry[];
+  trajectory: DiffEntry[];  // diff trajectory (newest to oldest)
   byPath: Map<string, DiffTrackerEntryState>;
   snapshots: Map<string, string>;
   options: DiffTrackerOptions;

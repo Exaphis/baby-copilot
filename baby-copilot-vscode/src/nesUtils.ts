@@ -6,7 +6,7 @@ import { collectDefinitionSnippets } from "./adapter/vscodeContext.js";
 
 export interface NesContext {
   doc: vscode.TextDocument; // document being edited
-  diffTrajectory: DiffEntry[]; // trajectory of diffs
+  diffTrajectory: DiffEntry[]; // trajectory of diffs, newest to oldest
   cursor: vscode.Position; // cursor position in the file
   editableRange: vscode.Range; // range that can be edited
 }
@@ -47,10 +47,14 @@ export async function requestEdit(
     diffs: context.diffTrajectory,
     definitions,
   });
+  const diffLines = diffTrace.split("\n");
+  const firstHunkIndex = diffLines.findIndex((line) => line.startsWith("@@"));
+  const cleanedDiffTrace =
+    firstHunkIndex === -1 ? "" : diffLines.slice(firstHunkIndex).join("\n");
   console.log(
     `baby-copilot: context bytes=${contextBlock.length}, diffs=${context.diffTrajectory.length}`
   );
-  console.log(`baby-copilot: diff trajectory\n${diffTrace}`);
+  console.log(`baby-copilot: diff trajectory\n${cleanedDiffTrace}`);
 
   const prompt: ModelMessage[] = [
     {
@@ -94,8 +98,7 @@ export async function requestProbe(
   const prompt: ModelMessage[] = [
     {
       role: "system",
-      content:
-        "You are a latency probe. Reply with a single word: OK.",
+      content: "You are a latency probe. Reply with a single word: OK.",
     },
     {
       role: "user",
