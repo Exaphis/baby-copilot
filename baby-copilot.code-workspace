@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "baby-copilot-vscode"
+		},
+		{
+			"path": "core"
+		}
+	],
+	"settings": {
+		"typescript.tsc.autoDetect": "off"
+	}
+}

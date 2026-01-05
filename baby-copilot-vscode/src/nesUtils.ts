@@ -83,3 +83,34 @@ export async function requestEdit(
     return null;
   }
 }
+
+export async function requestProbe(
+  token: vscode.CancellationToken
+): Promise<boolean> {
+  if (token.isCancellationRequested) {
+    return false;
+  }
+
+  const prompt: ModelMessage[] = [
+    {
+      role: "system",
+      content:
+        "You are a latency probe. Reply with a single word: OK.",
+    },
+    {
+      role: "user",
+      content: "Ping.",
+    },
+  ];
+
+  try {
+    await generateText({
+      model: gateway("instinct"),
+      prompt: prompt,
+    });
+    return true;
+  } catch (error) {
+    console.error("Failed to run latency probe", error);
+    return false;
+  }
+}
