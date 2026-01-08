@@ -1,10 +1,14 @@
 /// <reference path="./vscode.proposed.inlineCompletionsAdditions.d.ts" />
 import * as vscode from "vscode";
 import * as fs from "fs";
-import * as path from "path";
 import * as nesUtils from "./nesUtils.js";
 import { randomUUID } from "crypto";
 import { VscodeDiffTracker } from "./adapter/vscodeDiffTracker.js";
+import {
+  activateDataCollection,
+  getTelemetryLogPath,
+  logTelemetry,
+} from "./dataCollection.js";
 
 export async function activate(context: vscode.ExtensionContext) {
   // trigger inline edit on baby-copilot.triggerSuggestion
@@ -14,8 +18,6 @@ export async function activate(context: vscode.ExtensionContext) {
   let latencyProbeInFlight = false;
   let inFlightRequest = false;
   let autoTriggerTimer: NodeJS.Timeout | null = null;
-  let lastChangeAt: number | null = null;
-  const recentIntervals: number[] = [];
   const recentLatencies: number[] = [];
 
   const diffTracker = new VscodeDiffTracker({
@@ -23,10 +25,10 @@ export async function activate(context: vscode.ExtensionContext) {
     mergeWindowMs: 5000,
   });
 
-  const MIN_DEBOUNCE_MS = 60;
-  const MAX_DEBOUNCE_MS = 1000;
-  const MAX_INTERVAL_SAMPLES = 6;
+  activateDataCollection(context);
+
   const MAX_LATENCY_SAMPLES = 5;
+  const AUTO_TRIGGER_DEBOUNCE_MS = 50;
   const LATENCY_PROBE_COUNT = 3;
   const LATENCY_PROBE_TIMEOUT_MS = 2000;
   const LATENCY_ENABLE_THRESHOLD_MS = 750;
@@ -44,37 +46,6 @@ export async function activate(context: vscode.ExtensionContext) {
     }
     const total = values.reduce((sum, value) => sum + value, 0);
     return total / values.length;
-  }
-
-  function clamp(value: number, min: number, max: number) {
-    return Math.min(max, Math.max(min, value));
-  }
-
-  function computeDynamicDebounceMs(lastChar: string | null) {
-    const avgInterval = average(recentIntervals);
-    const avgLatency = average(recentLatencies);
-    const baseInterval = avgInterval ?? 120;
-    let delay = baseInterval * 1.4;
-
-    if (avgInterval !== null && avgInterval < 120) {
-      delay += 140;
-    }
-
-    if (lastChar && /[A-Za-z0-9_]/.test(lastChar)) {
-      delay += 80;
-    }
-
-    if (lastChar && lastChar === ".") {
-      delay = Math.min(delay, 80);
-    } else if (lastChar && /\s/.test(lastChar)) {
-      delay = Math.min(delay, 110);
-    }
-
-    if (avgLatency !== null) {
-      delay -= Math.min(avgLatency * 0.3, 180);
-    }
-
-    return clamp(Math.round(delay), MIN_DEBOUNCE_MS, MAX_DEBOUNCE_MS);
   }
 
   async function runLatencyProbe() {
@@ -120,19 +91,18 @@ export async function activate(context: vscode.ExtensionContext) {
     );
   }
 
-  function scheduleAutoTrigger(lastChar: string | null) {
+  function scheduleAutoTrigger() {
     if (!autoTriggerEnabled) {
       return;
     }
     if (autoTriggerTimer) {
       clearTimeout(autoTriggerTimer);
     }
-    const delay = computeDynamicDebounceMs(lastChar);
     autoTriggerTimer = setTimeout(async () => {
       autoTriggerTimer = null;
       if (inFlightRequest) {
         autoTriggerTimer = setTimeout(() => {
-          scheduleAutoTrigger(null);
+          scheduleAutoTrigger();
         }, 80);
         return;
       }
@@ -140,7 +110,17 @@ export async function activate(context: vscode.ExtensionContext) {
       await vscode.commands.executeCommand(
         "editor.action.inlineSuggest.trigger"
       );
-    }, delay);
+    }, AUTO_TRIGGER_DEBOUNCE_MS);
+  }
+
+  function percentile(values: number[], percentileValue: number): number | null {
+    if (values.length === 0) {
+      return null;
+    }
+    const sorted = [...values].sort((a, b) => a - b);
+    const rank = Math.ceil((percentileValue / 100) * sorted.length) - 1;
+    const index = Math.min(sorted.length - 1, Math.max(0, rank));
+    return sorted[index];
   }
 
   const inlineProvider: vscode.InlineCompletionItemProvider = {
@@ -151,6 +131,7 @@ export async function activate(context: vscode.ExtensionContext) {
       shouldProvideInlineEdit = false;
       inFlightRequest = true;
 
+      const requestId = randomUUID();
       const rangeForSnippet = document.validateRange(
         new vscode.Range(
           Math.max(position.line - 10, 0),
@@ -168,6 +149,7 @@ export async function activate(context: vscode.ExtensionContext) {
             diffTrajectory: diffTracker.diffTrajectory,
             cursor: position,
             editableRange: rangeForSnippet,
+            requestId,
           },
           token
         );
@@ -175,6 +157,13 @@ export async function activate(context: vscode.ExtensionContext) {
         if (edit !== null) {
           pushSample(recentLatencies, elapsed, MAX_LATENCY_SAMPLES);
         }
+        logTelemetry({
+          type: "latency",
+          timestamp: new Date().toISOString(),
+          requestId,
+          latencyMs: elapsed,
+          hasCompletion: edit !== null,
+        });
       } finally {
         inFlightRequest = false;
       }
@@ -189,12 +178,20 @@ export async function activate(context: vscode.ExtensionContext) {
         range: rangeForSnippet,
         isInlineEdit: true,
         showInlineEditMenu: true,
-        correlationId: randomUUID(),
+        correlationId: requestId,
         completeBracketPairs: true,
       };
 
       const list = new vscode.InlineCompletionList([item]);
       list.enableForwardStability = true;
+
+      logTelemetry({
+        type: "completion",
+        timestamp: new Date().toISOString(),
+        requestId,
+        uri: document.uri.toString(),
+        content: edit.content,
+      });
 
       return list;
     },
@@ -202,12 +199,15 @@ export async function activate(context: vscode.ExtensionContext) {
       let reasonLabel = "unknown";
       switch (reason.kind) {
         case vscode.InlineCompletionEndOfLifeReasonKind.Accepted:
+          // accepted: user explicitly applied the suggestion.
           reasonLabel = "accepted";
           break;
         case vscode.InlineCompletionEndOfLifeReasonKind.Rejected:
+          // rejected: user explicitly dismissed the suggestion (e.g. Esc).
           reasonLabel = "rejected";
           break;
         case vscode.InlineCompletionEndOfLifeReasonKind.Ignored:
+          // ignored: suggestion expired due to user typing/moving without explicit accept/reject.
           reasonLabel = "ignored";
           break;
       }
@@ -217,6 +217,12 @@ export async function activate(context: vscode.ExtensionContext) {
       })`;
       console.log(message, reason);
       vscode.window.setStatusBarMessage(message, 3000);
+      logTelemetry({
+        type: "outcome",
+        timestamp: new Date().toISOString(),
+        requestId: completionItem.correlationId ?? "unknown",
+        outcome: reasonLabel,
+      });
     },
   };
 
@@ -253,18 +259,10 @@ export async function activate(context: vscode.ExtensionContext) {
       if (!latencyProbeDone) {
         runLatencyProbe();
       }
-      const change = event.contentChanges[event.contentChanges.length - 1];
-      if (!change) {
+      if (event.contentChanges.length === 0) {
         return;
       }
-      const now = Date.now();
-      if (lastChangeAt !== null) {
-        pushSample(recentIntervals, now - lastChangeAt, MAX_INTERVAL_SAMPLES);
-      }
-      lastChangeAt = now;
-      const lastChar =
-        change.text.length > 0 ? change.text[change.text.length - 1] : null;
-      scheduleAutoTrigger(lastChar);
+      scheduleAutoTrigger();
     }
   );
 
@@ -292,9 +290,8 @@ export async function activate(context: vscode.ExtensionContext) {
   const viewLogsCommand = vscode.commands.registerCommand(
     "baby-copilot.viewLogs",
     () => {
-      const storagePath = context.globalStorageUri.fsPath;
-      const logFilePath = path.join(storagePath, "events.log");
-      if (fs.existsSync(logFilePath)) {
+      const logFilePath = getTelemetryLogPath();
+      if (logFilePath && fs.existsSync(logFilePath)) {
         const logUri = vscode.Uri.file(logFilePath);
         vscode.window.showTextDocument(logUri);
       } else {
@@ -303,9 +300,66 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  const telemetryStatsCommand = vscode.commands.registerCommand(
+    "baby-copilot.showTelemetryStats",
+    () => {
+      const logFilePath = getTelemetryLogPath();
+      if (!logFilePath || !fs.existsSync(logFilePath)) {
+        vscode.window.showInformationMessage("No telemetry logs found.");
+        return;
+      }
+
+      const contents = fs.readFileSync(logFilePath, "utf8");
+      const lines = contents.split("\n").filter((line) => line.trim().length > 0);
+      const latencies: number[] = [];
+      let accepted = 0;
+      let rejected = 0;
+
+      for (const line of lines) {
+        try {
+          const event = JSON.parse(line) as {
+            type?: string;
+            latencyMs?: number;
+            outcome?: string;
+          };
+          if (event.type === "latency" && typeof event.latencyMs === "number") {
+            latencies.push(event.latencyMs);
+          } else if (event.type === "outcome") {
+            if (event.outcome === "accepted") {
+              accepted += 1;
+            } else if (event.outcome === "rejected") {
+              rejected += 1;
+            }
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      const p50 = percentile(latencies, 50);
+      const p95 = percentile(latencies, 95);
+      const p99 = percentile(latencies, 99);
+      const totalDecisions = accepted + rejected;
+      const acceptanceRate =
+        totalDecisions === 0 ? null : (accepted / totalDecisions) * 100;
+
+      const parts = [
+        `p50=${p50 === null ? "n/a" : `${Math.round(p50)}ms`}`,
+        `p95=${p95 === null ? "n/a" : `${Math.round(p95)}ms`}`,
+        `p99=${p99 === null ? "n/a" : `${Math.round(p99)}ms`}`,
+        `accept=${acceptanceRate === null ? "n/a" : `${acceptanceRate.toFixed(1)}%`}`,
+        `n=${totalDecisions}`,
+      ];
+      vscode.window.showInformationMessage(
+        `baby-copilot telemetry: ${parts.join(" ")}`
+      );
+    }
+  );
+
   context.subscriptions.push(
     disposable,
     viewLogsCommand,
+    telemetryStatsCommand,
     inlineCompletionProvider,
     openDocumentListener,
     closeDocumentListener,

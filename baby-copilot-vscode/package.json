@@ -26,6 +26,10 @@
       {
         "command": "baby-copilot.viewLogs",
         "title": "View Data Collection Logs"
+      },
+      {
+        "command": "baby-copilot.showTelemetryStats",
+        "title": "Show Telemetry Stats"
       }
     ],
     "keybindings": [

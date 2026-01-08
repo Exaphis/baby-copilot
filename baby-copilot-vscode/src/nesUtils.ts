@@ -3,12 +3,14 @@ import { generateText, ModelMessage } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { buildPrompt, type DiffEntry } from "@baby-copilot/core";
 import { collectDefinitionSnippets } from "./adapter/vscodeContext.js";
+import { logTelemetry } from "./dataCollection.js";
 
 export interface NesContext {
   doc: vscode.TextDocument; // document being edited
   diffTrajectory: DiffEntry[]; // trajectory of diffs, newest to oldest
   cursor: vscode.Position; // cursor position in the file
   editableRange: vscode.Range; // range that can be edited
+  requestId?: string; // request correlation id for telemetry
 }
 
 export interface NesSuggestion {
@@ -55,7 +57,6 @@ export async function requestEdit(
     `baby-copilot: context bytes=${contextBlock.length}, diffs=${context.diffTrajectory.length}`
   );
   console.log(`baby-copilot: diff trajectory\n${cleanedDiffTrace}`);
-
   const prompt: ModelMessage[] = [
     {
       role: "system",
@@ -66,6 +67,14 @@ export async function requestEdit(
       content: userPrompt,
     },
   ];
+  logTelemetry({
+    type: "prompt",
+    timestamp: new Date().toISOString(),
+    requestId: context.requestId ?? "unknown",
+    prompt,
+    contextBytes: contextBlock.length,
+    diffCount: context.diffTrajectory.length,
+  });
 
   try {
     const resp = await generateText({
