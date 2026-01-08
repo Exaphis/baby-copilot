@@ -21,17 +21,27 @@
     "commands": [
       {
         "command": "baby-copilot.triggerSuggestion",
-        "title": "Trigger suggestion"
+        "title": "Baby Copilot: Trigger suggestion"
       },
       {
         "command": "baby-copilot.viewLogs",
-        "title": "View Data Collection Logs"
+        "title": "Baby Copilot: View Data Collection Logs"
       },
       {
         "command": "baby-copilot.showTelemetryStats",
-        "title": "Show Telemetry Stats"
+        "title": "Baby Copilot: Show Telemetry Stats"
       }
     ],
+    "configuration": {
+      "title": "Baby Copilot",
+      "properties": {
+        "baby-copilot.silentCompletions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Generate and log completions without showing them in the editor."
+        }
+      }
+    },
     "keybindings": [
       {
         "command": "baby-copilot.triggerSuggestion",

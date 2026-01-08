@@ -193,6 +193,19 @@ export async function activate(context: vscode.ExtensionContext) {
         content: edit.content,
       });
 
+      const silentMode = vscode.workspace
+        .getConfiguration("baby-copilot")
+        .get<boolean>("silentCompletions", false);
+      if (silentMode) {
+        logTelemetry({
+          type: "outcome",
+          timestamp: new Date().toISOString(),
+          requestId,
+          outcome: "ignored",
+        });
+        return [];
+      }
+
       return list;
     },
     handleEndOfLifetime(completionItem, reason) {
@@ -320,9 +333,14 @@ export async function activate(context: vscode.ExtensionContext) {
           const event = JSON.parse(line) as {
             type?: string;
             latencyMs?: number;
+            hasCompletion?: boolean;
             outcome?: string;
           };
-          if (event.type === "latency" && typeof event.latencyMs === "number") {
+          if (
+            event.type === "latency" &&
+            event.hasCompletion === true &&
+            typeof event.latencyMs === "number"
+          ) {
             latencies.push(event.latencyMs);
           } else if (event.type === "outcome") {
             if (event.outcome === "accepted") {
